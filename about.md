@@ -1,5 +1,6 @@
 ---
 layout: about
+permalink: /about/
 ---
 
 Hi, my name is Zaid Humayun. I am a self-taught web developer, and am very curious about how computers work.
