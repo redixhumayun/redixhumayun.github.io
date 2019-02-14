@@ -1,0 +1,47 @@
+---
+---
+
+@import "minima";
+
+/*Overriding styles*/
+h1, h2, h3 {
+  color: #FF4633;
+}
+
+a, a:visited, a:hover{
+  color: #2C9FB4;
+}
+
+.site-header {
+  border-top: 0px;
+}
+
+.site-title {
+  color: #FF4633 !important;
+}
+
+.site-nav .trigger .page-link {
+  color: #FF4633
+}
+
+/*clearfix hack*/
+.grouping:before,
+.grouping:after {
+  visibility: hidden;
+	display: block;
+	font-size: 0;
+	content: " ";
+	clear: both;
+	height: 0;
+}
+
+.medium-articles {
+  margin-bottom: 50px;
+}
+
+/*About Page*/
+.image-container {
+  width: 250px;
+  height: 250px;
+  margin: 0 auto;
+}
