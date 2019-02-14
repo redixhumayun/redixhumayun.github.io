@@ -44,13 +44,13 @@ computerA.send(data)
 computerB.recv(1024)
 {% endhighlight %}
 
-This code snippet does the exact same thing the image above represents. Except for one curiosity, we don't say {% ihighlight python %} computerB.recv(data) {% endihighlight %}. Instead, we specify a seemingly random number in the place of {% ihighlight python %} data {% endihighlight %}
+This code snippet does the exact same thing the image above represents. Except for one curiosity, we don't say computerB.recv(data). Instead, we specify a seemingly random number in the place of data
 
-The reason is simple. Data over a network is transmitted in bits. Therefore, when we {% ihighlight python %} recv {% endihighlight %} in computerB, we specify the number of *bits* we are willing to receive at any one given point in time. 
+The reason is simple. Data over a network is transmitted in bits. Therefore, when we recv in computerB, we specify the number of *bits* we are willing to receive at any one given point in time. 
 
 Why did I pick 1024 bytes to receive at once? No specific reason. It is usually best to specify the number of bytes you would receive in a power of 2. I picked 1024 which is 2^10. 
 
-So, how does the buffer figure into this? Well, Computer A writes or sends whatever is stored in {% ihighlight python %} data {% endihighlight %} into the buffer. Computer B decides to read or receive the first 1024 bytes of what is stored in that buffer. 
+So, how does the buffer figure into this? Well, Computer A writes or sends whatever is stored in data into the buffer. Computer B decides to read or receive the first 1024 bytes of what is stored in that buffer. 
 
 Okay, awesome! But, how do these two computers know to talk to each other? For instance, when Computer A writes to this buffer, how does it know that Computer B is going to pick it up? To rephrase that, how can ensure that a connection between two computers has a unique buffer? 
 
@@ -108,13 +108,13 @@ print(data.decode('utf-8'))
 
 It looks like we've jumped a little ahead in terms of the code, but I'll step through it. We know we have two computers, A and B. Therefore, we need one to send data and one to receive data. 
 
-I have arbitrarily selected A to send data and B to receive data. In this line {% ihighlight Python %} computerA.connect(('127.0.0.1', 8000)) {% endihighlight %} I am making computerA connect to port 8000 on IP address {% ihighlight Python %} 127.0.0.1 {% endihighlight %}.
+I have arbitrarily selected A to send data and B to receive data. In this line computerA.connect(('127.0.0.1', 8000) I am making computerA connect to port 8000 on IP address 127.0.0.1.
 
 *Note: 127.0.0.1 typically means localhost, which references your machine*
 
-Then, for computerB, I am making it bind to port 8000 on IP address {% ihighlight Python %} 127.0.0.1 {% endihighlight %}. Now, you're proabbly wondering why I have the same IP address for two different computers. That's because I'm cheating. I'm using one computer to demonstrate how you can use sockets. Typically two different computers would have two different IP addresses. 
+Then, for computerB, I am making it bind to port 8000 on IP address 127.0.0.1. Now, you're proabbly wondering why I have the same IP address for two different computers. That's because I'm cheating. I'm using one computer to demonstrate how you can use sockets. Typically two different computers would have two different IP addresses. 
 
-We already know that only bits can be sent as part of a data packet, which is why we encode the string before sending it over. Similarly, we decode the string on Computer B. If you decide to run the above two files locally, make sure to run computerB.py file first. If you run the computerA.py file first, you will get a {% ihighlight Python %}connection refused{% endihighlight %} error. 
+We already know that only bits can be sent as part of a data packet, which is why we encode the string before sending it over. Similarly, we decode the string on Computer B. If you decide to run the above two files locally, make sure to run computerB.py file first. If you run the computerA.py file first, you will get a connection refused error. 
 
 ### Serving The Clients
 
@@ -146,11 +146,11 @@ This is a good opportunity to break the problem down. There are a couple of thin
 
 * **How do we figure out the number of bytes a string occupies in Python?**
 
-Well, we could start by figuring out the length of a string first. That's easy, it's just a call to {%ihighlight Python%}len(){%endihighlight%}.
+Well, we could start by figuring out the length of a string first. That's easy, it's just a call to len().
 But, we still need to know the number of bytes occupied by a string, not just the length. 
 
 We'll convert the string to binary first, and then find the length of the resulting binary representation. That should give us the number of bytes used. 
-{%ihighlight Python%}len('random'.encode('utf-8')){%endihighlight%} will give us what we want
+len('random'.encode('utf-8')) will give us what we want
 
 * **How do we send the number of bytes occupied by each string to the server?**
 
@@ -182,11 +182,11 @@ I want to explain a few specific lines of code in the above gists. The first, fr
 len_in_bytes = (len_of_string).to_bytes(2, byteorder='little')
 {% endhighlight %}
 
-What the above does is convert a number into bytes. The first parameter passed to the {% ihighlight Python %} to_bytes {% endihighlight %} function is the number of bytes allocated to the result of converting {% ihighlight Python %}len_of_string{% endihighlight %} to its binary representation.
+What the above does is convert a number into bytes. The first parameter passed to the to_bytes function is the number of bytes allocated to the result of converting len_of_string to its binary representation.
 
 The second parameter is used to decide whether to follow the Little Endian format or the Big Endian format. You can read more about it [here](https://en.wikipedia.org/wiki/Endianness). For now, just know that we will always stick with little for that parameter. 
 
-The next line of code I want to take a look at is {% ihighlight Python %}client_socket.send(string.encode('utf-8')){% endihighlight %}. We're converting the string to a binary format using the 'utf-8' encoding. 
+The next line of code I want to take a look at is client_socket.send(string.encode('utf-8')). We're converting the string to a binary format using the 'utf-8' encoding. 
 
 Next, in the serverSocket.py file:
 
@@ -197,7 +197,7 @@ Next, in the serverSocket.py file:
 
 The first line of code above receives 2 bytes of data from the client. Remember that when we converted the length of the string to a binary format in clientSocket.py, we decided to store the result in 2 bytes. This is why we're reading 2 bytes here for that same data. 
 
-Next line involves converting the binary format to an integer. The {% ihighlight Python %}byteorder{% endihighlight %} here is "little", to match the {% ihighlight Python %}byteorder{% endihighlight %} we used on the client. 
+Next line involves converting the binary format to an integer. The byteorder here is "little", to match the byteorder we used on the client. 
 
 If you go ahead and run the two sockets, you should see that the server will print out the strings the client sends across. We established communication!
 
