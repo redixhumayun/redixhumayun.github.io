@@ -25,7 +25,7 @@ Okay, that's all great, but what do send() and recv() send and receive? When peo
 
 Lets illustrate the methods with an example. Let's say we have two computers, A and B. Computer A is trying to say something to Computer B. Therefore, Computer B is trying to listen to what Computer A is saying. Here's what that would look like. 
 
-![name](/assets/img/socket_buffer.jpg)
+![Sockets With A Buffer In Between](/assets/img/socket_buffer.jpg)
 
 ### Reading The Buffer
 
@@ -56,7 +56,7 @@ Okay, awesome! But, how do these two computers know to talk to each other? For i
 
 ### Porting Into IPs
 
-![name](/assets/img/socket_ports.JPG)
+![Ports And IPs displayed in front](/assets/img/socket_ports.JPG)
 
 The image above shows the same two computers we've been working on all along with one more detail added in. There are a bunch of numbers listed in front of each computer along the length of a bar. 
 
