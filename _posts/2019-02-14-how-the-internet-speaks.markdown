@@ -25,7 +25,7 @@ Okay, that's all great, but what do send() and recv() send and receive? When peo
 
 Lets illustrate the methods with an example. Let's say we have two computers, A and B. Computer A is trying to say something to Computer B. Therefore, Computer B is trying to listen to what Computer A is saying. Here's what that would look like. 
 
-![name](/assets/img/socket_buffer.JPG)
+![name](/assets/img/socket_buffer.jpg)
 
 ### Reading The Buffer
 
