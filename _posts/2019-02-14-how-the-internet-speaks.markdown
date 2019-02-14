@@ -7,7 +7,7 @@ category: networking
 ![](/assets/img/socket_overview.jpg)
 ## A Story Of Communication
 
-Have you ever wondered how the internet actually speaks? How does one computer "talk" to another computer via the internet? 
+Have you ever wondered how the internet actually speaks? How does one computer "talk" to another computer over the internet? 
 
 When people communicate with one another, we use words strung into seemingly meaningful sentences. The sentences only make sense because we've agreed on a meaning for these sentences. We've defined a protocol of communication, so to speak. 
 
