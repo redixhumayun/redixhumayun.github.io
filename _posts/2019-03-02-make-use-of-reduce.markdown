@@ -1,7 +1,7 @@
 ---
 layout: post
-title: "Make Use Of Reduce"
-date: 2019-03-02 1:29:25 +0530
+title:  "Make Use Of Reduce"
+date:   2019-03-02 1:29:25 +0530
 category: functional
 ---
 
