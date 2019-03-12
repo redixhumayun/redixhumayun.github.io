@@ -130,3 +130,5 @@ If the seed value is an object, you are trying to transform to an object
 If the see value is an array, you are trying to transform to an array
 
 If the seed value is a number, you are trying to transform to a number
+
+Using these basic concepts, you can utilize reduce in new and more powerful ways.
