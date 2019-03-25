@@ -4,7 +4,6 @@ title:  "Make Use Of Reduce"
 date:   2019-03-02 1:29:25 +0530
 category: functional
 ---
-
 ## Why Reduce At All?
 
 Let's start with the most important question, the why? Why use reduce at all? Simple, it allows transformations from one data type to another. What do I mean by this? 
