@@ -60,7 +60,7 @@ This is probably one of my favorite uses of reduce.
  Object -> Array<T>
 {% endhighlight %}
 
-Let's say we have the following object and we want to the subsequent array:
+Let's say we have the following object and we want the subsequent array:
 
 {% highlight javascript %}
 let obj = {
