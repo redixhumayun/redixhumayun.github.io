@@ -112,7 +112,7 @@ Read the MDN documentation for `g` [here](https://developer.mozilla.org/en-US/do
 
 If you want to understand why people make use of the `g` element, read [this](http://tutorials.jenkov.com/svg/g-element.html)
 
-#### The Data We Need
+### The Data We Need
 
 Before we continue any further, let's quickly create the data we'll be using. Here is a sample JSON file we can use to create a bar chart. 
 
@@ -343,6 +343,8 @@ returned from calling `chart.append('g')`
 Having to explain how `call` works is precisely why I don't like it. There's too much implicitly happening that just seems like black magic. 
 
 If you're still confused about how `call` works hopefully the following graphic clears it up for you. 
+
+![](/assets/img/how_call_works.jpg)
 
 Creating the Y axis now that we know how the X axis works is far simpler. We use the same principles but swap out `axisBottom` for `axisLeft` and change the translate function slightly. 
 
