@@ -132,10 +132,6 @@ Also, this was only for 10 rolls of fabric. As your company grows, you're going 
 
 Manually checking each roll of fabric is not an operation that can scale, and as your operations scale, trust becomes more important.
 
-
-
-
-
 Now, back to our problems of scaling. We have a total of 6 suppliers, 8 factories and more buyers and therefore more styles of fabric.
 
 With 5 factories receiving fabric once a day and 3 factories receiving fabric twice a day, the head office will receive `5*1 + 3*2 = 11 emails` a day.
