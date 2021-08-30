@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "Manufacturing On The Internet"
+title:  "A Manufacturing OS"
 category: product
 ---
 
