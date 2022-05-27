@@ -8,7 +8,7 @@ category: Performance
 
 The problems started with AWS, because of course it did. The application has been humming along smoothly for a while with no issues whatsoever. We decide to run a load test to understand whether a specific API endpoint can handle the load that we expect it to have. 
 
-We download JMeter, try to figure out how to use it and then give up. We get back to it a day later and finally have some idea of how to get it up and running. We point it to the test server and launch 25 threads in a loop to run 8 times and promptly see about 25% of the requests fail. The average time for the request is ~45 seconds and this scares the ever living crap out of us.
+We download JMeter, try to figure out how to use it and then give up. We get back to it a day later and finally have some idea of how to get it up and running. We point it to the test server running on AWS and launch 25 threads in a loop to run 8 times and promptly see about 25% of the requests fail. The average time for the request is ~45 seconds. Not going to lie, this was pretty terrifying.
 
 This scares us because it means our route is so ridiculously inefficient that it managed to generate a throughput of only about 1.2 requests / second whereas we expect it to handle a load of about 4-8 requests / second.
 
@@ -16,11 +16,11 @@ Okay, so what's going on? Why is this route so wildly inefficienct.
 
 ## Why Jeff Bezos Is Rich
 
-The immediate assumption we made is to point the finger of blame at the company's in-house ERP system that we depend upon for validation. Of course it has to be the ERP, because we don't have to take any responsibility for it since it's a different service provider.
+The immediate assumption we made is to point the finger of blame at the company's in-house ERP system that we depend upon for validation. Of course it has to be the ERP, because we don't have to take any responsibility for it since it's a different provider.
 
 Well, after pointing JMeter at a local machine and running the same load test, we easily achieved the throughput that we wanted. In fact, we exceeded it by quite a bit. If it was the internal ERP system that was causing the issue, why couldn't it be reproduced on a local machine?
 
-I reached out to someone for help and got pointed in the direction of AWS throttling servers and this opened up a whole can of worms for me. It finally helped me understand why Jeff Bezos is rich.
+I reached out to someone who works at Amazon for help and got pointed in the direction of AWS throttling servers because our CPU load was never exceeding 10% on the EC2 test instance. And this opened up a whole can of worms for me. It finally helped me understand why Jeff Bezos is rich.
 
 So, when you are running your application on AWS, what exactly is happening? To be honest, I didn't really understand the internals and I still don't completely, but here's the gist.
 
@@ -28,7 +28,7 @@ You purchase compute time from AWS - what I thought this meant was that they ran
 
 AWS has this concept of an EC2 Compute Unit (ECU) which is their way of abstracting away having to think about the servers your application is actually running on. If you can think in terms of ECU's, you don't have to worry about the actual physical infrastructure at all. AWS later changed the ECU to a virtual CPU (vCPU), but you'll still find lots of references to an ECU on the web.
 
-So, a vCPU is how they describe the computing power of their various instances. We're using an t2.micro EC2 instance for our test server and running two of them for our production server because our application is mostly an OLTP workload which is DB heavy.
+So, a vCPU is how they describe the computing power of their various instances. We're using an t2.micro EC2 instance for our test server and running two of them for our production server. Our application is mostly an OLTP workload which is read heavy.
 
 Since AWS runs multiple applications on a single server separated by a hypervisor, they allocate a specific amount of compute bandwith, network bandwith & storage to your application depending on your choice of instance.
 
@@ -49,7 +49,7 @@ The calculation for earning credits is:
 
 `1vCPU * 10% baseline * 60 minutes = 6 credits per hour.`
 
-The calculation for spending credits is:
+The calculation for spending credits if you are utilising at 15% is:
 
 1vCPU * 15% CPU * 60 minutes = 9 credits per hour.
 
@@ -57,11 +57,13 @@ So, if you are constantly running at 15%, your instance is losing 9 credits per 
 
 So, while you might not be strictly losing money on the instance, you are paying for it in CPU cycles that are lost.
 
-Another way to confirm that you are losing CPU cycles because of throttling is to login to your EC2 instance and run the `top` command to check the steal time. If you try to load test your server and your CPU is throttled, then you can watch in real time as the steal time goes up to prevent your process from taking any additional time.
+Another way to confirm that you are losing CPU cycles because of throttling is to login to your EC2 instance and run the `top` command to check the steal time. If you try to load test your server and your CPU is throttled, then you can watch in real time as the steal time goes up to prevent your process from taking any additional CPU time.
 
 ## DB Failures
 
-Around the same time that we figured out that we were losing CPU cycles to the VM because of lack of credits, we also realised that some requests were taking more than 10 seconds and were timing out once it became 2pm.
+Okay, so if the issue is the throttling of the EC2 instance, removing the throttling should fix the issue, right? Well, we checked our production instances and noticed that they were also having failures even though they weren't being throttled.
+
+On the production instances, we realised that some requests were taking more than 10 seconds and were timing out once it became 2pm.
 
 Why is the 2PM relevant?
 
@@ -75,7 +77,7 @@ Everytime your RDS instance goes above 100 IOPS, however, you consume burst cred
 
 The reason users were facing a slow down at around 2PM everyday was because our IOPS would be over 100 throughout the day, which would consume burst credits which would then run out by 2PM, post which we were limited to 100 IOPS.
 
-This caused all the timeouts our users were facing. We figured the simplest & cheapest way to fix this would be to increase the storage capacity of our EBS volume. We increased it to 100GB which gave us a baseline of 300 IOPS. We figured this would be enough because our average IOPS over the course of a day had wild fluctuations but seemed to average around this number.
+This caused all the timeouts our users were facing! We figured the simplest & cheapest way to fix this would be to increase the storage capacity of our EBS volume. We increased it to 100GB which gave us a baseline of 300 IOPS. We figured this would be enough because our average IOPS over the course of a day had wild fluctuations but seemed to average around this number.
 
 We upgraded our EBS volume and waiting for the next afternoon ----  and the exact same issue came up again!
 
@@ -89,7 +91,7 @@ Upon trying to enable Performance Insights, we found that it wouldn't work for a
 
 We upgraded the instance and then restarted the DB server and waited. I kept a close eye on the IOPS metric but it didn't seem to be budging beyond 0-10 IOPS, which I assumed meant that nobody was using the application yet.
 
-I checked and was told repeatedly that people were using the application and it was working completely fine but I just couldn't understand what was going on! Why was it working? It shouldn't have been working, there were barely an IOPS happening.
+I checked and was told repeatedly that people were using the application and it was working completely fine but I just couldn't understand what was going on! Why was it working? It shouldn't have been working, there were barely any IOPS happening.
 
 ## Remembering Why RAM Matters
 
@@ -147,13 +149,13 @@ Just a ridiculous amount of execution time was being wasted by that one function
 
 I thought about it and did what every self-respecting software engineer does when faced with a problem they can't figure out. I posted the question on Stack Overflow.
 
-[Here's a link to the question](https://stackoverflow.com/questions/71908085/why-does-removing-the-binary-function-call-from-my-sql-query-change-the-query-pl). The answer is that it has something to do with column collation.
+[Here's a link to the question](https://stackoverflow.com/questions/71908085/why-does-removing-the-binary-function-call-from-my-sql-query-change-the-query-pl). The answer is that it has to do with column collation.
 
 Since, I was casting each value in the `roll_number` column in the `roll` table to a binary value, MySQL can't use indexes unless that specific collation is defined on the column in the DDL.
 
-Since the index was useless, it was doing a full table scan and checking the value of each and every row through nested inner joins. Removing the `BINARY` function call was the easiest way to solve the issue.
+Since the index was useless, it was doing a full table scan and checking the value of each and every row through nested inner joins. Removing the `BINARY` function call was the easiest way to solve the issue, but changing the column collation to use the latin character set and be case sensitive so the index is built with case sensitivity ensured that we did not run into issues with barcode collisions occurring.
 
-## Why Is Jeff Rich?
+## So, Why Is Jeff Rich?
 
 He is rich because he has abstracted away the hardware from millions of software engineers and has simultaneously made pricing so difficult to understand that nobody really knows how much they're paying until its too late.
 
@@ -161,4 +163,8 @@ We can't downgrade the EBS volume from 100GB back down to 20GB because AWS won't
 
 We also can't downgrade from `db.t3.medium` to `db.t3.micro` because we lose access to Performance Insights. Sure, we could recreate Performance Insights because it's essentially built on top of Performance Schema which is a native MySQL feature but it's so much engineering time which contributes nothing in terms of value to our end customer.
 
-## Conclusion
+## In Closing
+
+I love AWS and I love how easy it has made hardware access for millions of developers. But, I can't help but get frustrated at the poor documentation surrounding AWS and how easy it is to shoot yourself in the foot unless you're willing to constantly cough up money to AWS.
+
+I know that understanding how hardware is being used is a must for software engineers but it feels like a double whammy when you need to spend so much time understanding the AWS abstraction that should be removing the need to worry about the underlying hardware. AWS has an Aurora DB which seems like a managed database that prevents these kinds of issues from occurring, but sometimes it feels easier to just run your own hardware like [Oxide Computer](https://oxide.computer/) encourages people to do.
