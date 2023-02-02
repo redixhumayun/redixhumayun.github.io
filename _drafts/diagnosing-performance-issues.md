@@ -4,6 +4,12 @@ title: "Diagnosing Performance Issues"
 category: Performance
 ---
 
+## Finding The Root Cause
+
+Identifying performance issues has always been the holy grail of engineering. You want to be known as the software engineer who was able to diagnose and rectify the performance issue that came up in production. It really adds credibility to your engineering chops. 
+
+We had an issue at work recently that I thought would be fun to do a write up of. I'll delve into the details of how we went about trying to find the root cause of the issue (which is 90% of the problem usually) and then fixing it.
+
 ## Where The Problems Started
 
 The problems started with AWS, because of course it did. The application has been humming along smoothly for a while with no issues whatsoever. We decide to run a load test to understand whether a specific API endpoint can handle the load that we expect it to have. 
@@ -14,13 +20,13 @@ This scares us because it means our route is so ridiculously inefficient that it
 
 Okay, so what's going on? Why is this route so wildly inefficienct.
 
-## Why Jeff Bezos Is Rich
+## Throttling The CPU
 
 The immediate assumption we made is to point the finger of blame at the company's in-house ERP system that we depend upon for validation. Of course it has to be the ERP, because we don't have to take any responsibility for it since it's a different provider.
 
 Well, after pointing JMeter at a local machine and running the same load test, we easily achieved the throughput that we wanted. In fact, we exceeded it by quite a bit. If it was the internal ERP system that was causing the issue, why couldn't it be reproduced on a local machine?
 
-I reached out to someone who works at Amazon for help and got pointed in the direction of AWS throttling servers because our CPU load was never exceeding 10% on the EC2 test instance. And this opened up a whole can of worms for me. It finally helped me understand why Jeff Bezos is rich.
+I reached out to someone who works at Amazon for help and got pointed in the direction of AWS throttling servers because our CPU load was never exceeding 10% on the EC2 test instance. And this opened up a whole can of worms for me.
 
 So, when you are running your application on AWS, what exactly is happening? To be honest, I didn't really understand the internals and I still don't completely, but here's the gist.
 
@@ -28,7 +34,7 @@ You purchase compute time from AWS - what I thought this meant was that they ran
 
 AWS has this concept of an EC2 Compute Unit (ECU) which is their way of abstracting away having to think about the servers your application is actually running on. If you can think in terms of ECU's, you don't have to worry about the actual physical infrastructure at all. AWS later changed the ECU to a virtual CPU (vCPU), but you'll still find lots of references to an ECU on the web.
 
-So, a vCPU is how they describe the computing power of their various instances. We're using an t2.micro EC2 instance for our test server and running two of them for our production server. Our application is mostly an OLTP workload which is read heavy.
+So, a vCPU is how they describe the computing power of their various instances. We're using a t2.micro EC2 instance for our test server and running two of them for our production server. Our application is mostly an OLTP workload which is read heavy.
 
 Since AWS runs multiple applications on a single server separated by a hypervisor, they allocate a specific amount of compute bandwith, network bandwith & storage to your application depending on your choice of instance.
 
@@ -87,7 +93,7 @@ Upon investigating the IOPS issue a little deeper, I found that the read IOPS we
 
 As a last resort, we decided to enable Performance Insights on the AWS console for our RDS instance so we could see which queries were eating up most of the IOPS and fix that specific query.
 
-Upon trying to enable Performance Insights, we found that it wouldn't work for anything less than a `db.t3.medium` which forced us to upgrade to a DB instance with 4GB of RAM. Damn you Jeff, bested again by your tactics.
+Upon trying to enable Performance Insights, we found that it wouldn't work for anything less than a `db.t3.medium` which forced us to upgrade to a DB instance with 4GB of RAM.
 
 We upgraded the instance and then restarted the DB server and waited. I kept a close eye on the IOPS metric but it didn't seem to be budging beyond 0-10 IOPS, which I assumed meant that nobody was using the application yet.
 
@@ -155,9 +161,9 @@ Since, I was casting each value in the `roll_number` column in the `roll` table 
 
 Since the index was useless, it was doing a full table scan and checking the value of each and every row through nested inner joins. Removing the `BINARY` function call was the easiest way to solve the issue, but changing the column collation to use the latin character set and be case sensitive so the index is built with case sensitivity ensured that we did not run into issues with barcode collisions occurring.
 
-## So, Why Is Jeff Rich?
+## Frustrations With AWS
 
-He is rich because he has abstracted away the hardware from millions of software engineers and has simultaneously made pricing so difficult to understand that nobody really knows how much they're paying until its too late.
+There is no doubt that AWS has done a wonderful job of abstracting away the hardware from millions of software engineers, but it has simultaneously made pricing so difficult to understand that nobody really knows how much they're paying until its too late.
 
 We can't downgrade the EBS volume from 100GB back down to 20GB because AWS won't allow it. We have no need for the extra storage and it doesn't make sense to have it but we're stuck with it.
 
