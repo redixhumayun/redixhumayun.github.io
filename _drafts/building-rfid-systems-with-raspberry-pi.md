@@ -1,9 +1,8 @@
 ---
 layout: post
-title: "Diagnosing Performance Issues"
-category: Performance
+title: "Building RFID Systems With Raspberry Pi's"
+category: rfid, raspberry-pi
 ---
-
 ##  An Overview
 
 So, this was an interesting problem I had to solve at work. In the garment manufacturing industry, we had a client who included an RFID tag in their price tag when their product was shipped. They wanted to use an RFID reader system to read all the tags as and when the products were being shipped so that their ERP system could be updated.

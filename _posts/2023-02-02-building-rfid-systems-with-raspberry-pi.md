@@ -1,7 +1,7 @@
 ---
 layout: post
-title: "Diagnosing Performance Issues"
-category: Performance
+title: "Building RFID Systems With Raspberry Pi's"
+category: rfid, raspberry-pi
 ---
 
 ##  An Overview
