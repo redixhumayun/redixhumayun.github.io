@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "Experimenting with B+-Trees"
+title: "Experimenting with B+ Trees"
 category: databases
 ---
 
