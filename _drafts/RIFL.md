@@ -1,7 +1,7 @@
 ---
 layout: post
 title: "RIFL"
-category: databases, distributed systems
+category: databases
 ---
 
 # Introduction
