@@ -63,3 +63,7 @@ Each character is accompanied by an index, called either `A1`, `A2` or `B1` etc.
 The document's initial state was `[(h, A1), (a, A2), (t, A3)]`. Each write operation came into node A in the order of the letters in the word. With each write operation on node a, the logical timestamp was updated.
 
 When a new write operation comes into node B, it would be marked with the position `B1`, indicating this is the first write operation on node B.
+
+Now, along with the node and the logical timestamp, there might even be a fractional index which is used to determine the position of a character. I'm not sure exactly how fractional indexes work with CRDT's yet, but you can read more about them [here](https://madebyevan.com/algos/crdt-fractional-indexing/).
+
+_Note: Incidentally, the blog post above is from Evan Wallace, the cofounder of Figma_
