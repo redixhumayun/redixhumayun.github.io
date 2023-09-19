@@ -124,3 +124,5 @@ If it can't, the coordinator gives up on the whole transaction. If it can, it se
 So, that's 2PC in a nutshell. A really simple protocol which actually has massive adoption because of the ease of implementation.
 
 There is a better version of this called 3 phase commit which I'll explore in another article.
+
+If you want to find the full version of the code for 2PC, look [here](https://github.com/redixhumayun/Go/tree/master/2pc)
