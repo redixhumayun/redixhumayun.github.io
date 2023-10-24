@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "Intuition On Database Memory"
+title: "Intuition On Database Memory Management"
 category: databases
 ---
 
