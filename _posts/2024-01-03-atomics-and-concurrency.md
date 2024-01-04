@@ -347,6 +347,8 @@ std::shared_ptr<T> dequeue() {
 ```
 So there you have it. Atomics in C++. Very complicated and there is zero chance I'd ever put this into production. Especially because I'm fairly certain my concurrent queue would break ;-)
 
+If you want access to the code mentioned above, look at [this file](https://github.com/redixhumayun/concurrency/blob/master/concurrent-queue/cpp/lock-free-queue.hpp) and [this file](https://github.com/redixhumayun/concurrency/blob/master/concurrent-queue/cpp/atomics.cpp).
+
 ##  Notes
 
 Here are some articles and links which I found helpful while writing this blog:
