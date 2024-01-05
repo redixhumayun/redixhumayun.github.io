@@ -1,7 +1,7 @@
 ---
 layout: post
 title: "Parallel Merge Sort"
-catagory: systems
+category: systems
 ---
 
 ## Introduction

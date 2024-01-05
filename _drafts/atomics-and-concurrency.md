@@ -1,7 +1,7 @@
 ---
 layout: post
 title: "Atomics And Concurrency"
-catagory: systems
+category: systems
 ---
 
 This post is going to be long and complicated and will most probably have mistakes in it. I'm going to try and keep the examples as simple as possible so that there's less room for error.
