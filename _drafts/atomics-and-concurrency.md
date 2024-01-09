@@ -4,7 +4,7 @@ title: "Atomics And Concurrency"
 category: systems
 ---
 
-This post is going to be long and complicated and will most probably have mistakes in it. I'm going to try and keep the examples as simple as possible so that there's less room for error.
+This is going to be a long post, but I hope you get value out of it. This wasn't an easy topic to tackle but it was definitely worthwhile!
 
 Hopefully, you leave with a decent understanding of how memory ordering works and how to use atomics in conjunction with memory ordering to build a lock-free queue in C++.
 
