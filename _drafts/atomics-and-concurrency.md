@@ -345,4 +345,18 @@ std::shared_ptr<T> dequeue() {
     return return_value;
   }
 ```
+*Note: This queue doesn't handle the [ABA problem](https://en.wikipedia.org/wiki/ABA_problem). This blog post is too long to bring in hazard pointers, so I'm leaving that out*
+
 So there you have it. Atomics in C++. Very complicated and there is zero chance I'd ever put this into production. Especially because I'm fairly certain my concurrent queue would break ;-)
+
+##  Notes
+
+Here are some articles and links which I found helpful while writing this blog:
+
+1. [Understanding Atomics And Memory Ordering](https://dev.to/kprotty/understanding-atomics-and-memory-ordering-2mom)
+2. [The memory order reference from cppreference](https://en.cppreference.com/w/cpp/atomic/memory_order)
+3. [Atomics on the GCC Wiki](https://gcc.gnu.org/wiki/Atomic/GCCMM/AtomicSync)
+4. [Memory Ordering At Compile Time](https://preshing.com/20120625/memory-ordering-at-compile-time/)
+5. [Memory Barriers From The Linux Kernel Documentation](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/Documentation/memory-barriers.txt?id=HEAD) -> This one is especially helpful
+6. [ArangoDB's blog on memory barriers in C++](https://arangodb.com/2021/02/cpp-memory-model-migrating-from-x86-to-arm/)
+7. [The Danger Of Atomic Operations](https://abseil.io/docs/cpp/atomic_danger)

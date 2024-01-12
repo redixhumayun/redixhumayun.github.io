@@ -345,6 +345,8 @@ std::shared_ptr<T> dequeue() {
     return return_value;
   }
 ```
+*Note: This queue doesn't handle the [ABA problem](https://en.wikipedia.org/wiki/ABA_problem). This blog post is too long to bring in hazard pointers, so I'm leaving that out*
+
 So there you have it. Atomics in C++. Very complicated and there is zero chance I'd ever put this into production. Especially because I'm fairly certain my concurrent queue would break ;-)
 
 If you want access to the code mentioned above, look at [this file](https://github.com/redixhumayun/concurrency/blob/master/concurrent-queue/cpp/lock-free-queue.hpp) and [this file](https://github.com/redixhumayun/concurrency/blob/master/concurrent-queue/cpp/atomics.cpp).
