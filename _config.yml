@@ -16,7 +16,7 @@
 title: Zaid Humayun's Blog
 email: redixhumayun@gmail.com
 description: >- # this means to ignore newlines until "baseurl:"
-  Welcome to my blog. I am a self-taught developer. I write about programming and web development. 
+  Welcome to my blog. I am a self-taught developer. Currently, I am mainly writing about databases and concurrency. 
 baseurl: "" # the subpath of your site, e.g. /blog
 url: "" # the base hostname & protocol for your site, e.g. http://example.com
 twitter_username: redixhumayun
