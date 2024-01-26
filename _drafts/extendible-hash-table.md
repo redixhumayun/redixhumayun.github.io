@@ -24,6 +24,8 @@ You have the standard problems with this hash table of collisions occurring so y
 
 The hash table variations above typically don't do well with large volumes of data, which is what is required in databases. You need a dynamic data structure that can grow and shrink to handle changes in data and can support high throughput in a concurrent environment. 
 
+*Note: Hash tables seem to be typically used to create table indexes in databases, but typically B-trees are preferred here because hash tables don't support range queries*
+
 It's these two things that extendible hash tables do well - when they need to grow and shrink, they do so locally (i'll explain below) and can support fine-grained locking for concurrency.
 
 There are 3 things to keep track of in an extendible hash table - a header, a directory and a bucket. A header allows you to index into a directory and a directory allows you to index into a bucket. The image below shows an extendible hash table where each directory indexes into a unique bucket.
@@ -281,8 +283,17 @@ The reason for all this complexity is because there is no atomic way to upgrade 
 
 *Note: Boost does have a way to upgrade a lock, [see here](https://www.boost.org/doc/libs/1_65_1/doc/html/interprocess/synchronization_mechanisms.html#interprocess.synchronization_mechanisms.sharable_upgradable_mutexes.upgradable_whats_a_mutex). But, that still wouldn't completely solve the problem because a lock can't be ugpraded in the presence of a shared lock anyway. It would, however, simplify things slightly.*
 
-### Atomically Upgrading A Lock
+## Atomically Upgrading A Lock
 
 This was an interesting rabbit hole I jumped down. I'm still not quite clear what it means to atomically upgrade a lock. I've seen one implementation [here](https://codereview.stackexchange.com/questions/205009/c-upgradable-rw-lock-implementation) which involves upgrading a mutex by draining all current readers by preventing any new read acquisitions. 
 
 There was also a pretty interesting [Reddit thread](https://www.reddit.com/r/cpp_questions/comments/19dfhb1/atomically_upgrading_a_read_lock_to_a_write_lock/) about upgrading a mutex which got some interesting comments. 
+
+##  References
+
+These are some useful references
+
+1. [University of Scranton's course page on Extendible Hash Tables](https://www.cs.scranton.edu/~mccloske/courses/cmps340/hash_ext_examp.html)
+2. [Boost docs about upgradeable locks](https://www.boost.org/doc/libs/1_65_1/doc/html/interprocess/synchronization_mechanisms.html#interprocess.synchronization_mechanisms.sharable_upgradable_mutexes.upgradable_whats_a_mutex)
+3. [Reddit thread about upgrading a lock](https://www.reddit.com/r/cpp_questions/comments/19dfhb1/atomically_upgrading_a_read_lock_to_a_write_lock/)
+4. [Paper on Extendible Hashing](http://delab.csd.auth.gr/papers/ExtendibleHashing2017.pdf)
