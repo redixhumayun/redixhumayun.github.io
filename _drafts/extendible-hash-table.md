@@ -1,7 +1,7 @@
 ---
 layout: post
 title: "Visualising Extendible Hash Tables"
-category: systems
+category: databases
 ---
 
 I've been digging into data structures used in databases more and more recently and I wanted to write this post explaining how they work as a way to solidify my understanding.
