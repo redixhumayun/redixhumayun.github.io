@@ -14,7 +14,7 @@ Now, imagine that we have a distributed SQL database with 3 nodes. Now there's t
 
 ##  The Raft Paper
 
-The Raft paper was published in 2014, and you can read it [here](https://web.stanford.edu/~ouster/cgi-bin/papers/raft-atc14.pdf). It's probably one of the more understandeable papers out there and can be grokked pretty easily. Accompanying the paper are two resources - the great [Raft website](https://raft.github.io/) and the even better [Raft visualisation](https://thesecretlivesofdata.com/raft/). That visualisation is seriously incredible!
+The Raft paper was published in 2014, and you can read it [here](https://web.stanford.edu/~ouster/cgi-bin/papers/raft-atc14.pdf). It's probably one of the more understandeable papers out there and can be grokked pretty easily. Accompanying the paper are two resources - the great [Raft website](https://raft.github.io/) and the even better [Raft visualisation](https://thesecretlivesofdata.com/raft/). The visualisation is seriously incredible!
 
 The most important part of the paper is in a single page where the RPC's are described in detail. This page is dense with information and I spent weeks poring over it, trying to understand what was going on.
 
@@ -217,7 +217,7 @@ Imagine 2 nodes A and B where A is requesting a vote from B. If B has a higher t
 
 Furthermore, if B has a log entry with an index or term greater than the one sent by A in the request, the vote is rejected. Here's the relevant part of the code
 
-```
+```rust
 //  this node has already voted for someone else in this term and it is not the requesting node
         if state_guard.voted_for != None && state_guard.voted_for != Some(request.candidate_id) {
             debug!("EXIT: handle_vote_request on node {}. Not granting the vote because the node has already voted for someone else", self.id);
@@ -245,3 +245,320 @@ Furthermore, if B has a log entry with an index or term greater than the one sen
         }
 ```
 
+Assuming that node B has not granted its vote for anyone in the current election cycle and the log check passes, it can return a successful vote response to A.
+
+Now, let's look at how votes are tallied up
+
+```rust
+///  The quorum size is (N/2) + 1, where N = number of servers in the cluster and N is odd
+fn quorum_size(&self) -> usize {
+    (self.config.cluster_nodes.len() / 2) + 1
+}
+
+fn can_become_leader(&self, state_guard: &MutexGuard<'_, RaftNodeState<T>>) -> bool {
+    let sum_of_votes_received = state_guard
+        .votes_received
+        .iter()
+        .filter(|(_, vote_granted)| **vote_granted)
+        .count();
+    let quorum = self.quorum_size();
+    sum_of_votes_received >= quorum
+}
+
+fn handle_vote_response(&mut self, vote_response: VoteResponse) {
+    let mut state_guard = self.state.lock().unwrap();
+
+    if state_guard.status != RaftNodeStatus::Candidate {
+        return;
+    }
+
+    if !vote_response.vote_granted && vote_response.term > state_guard.current_term {
+        //  the term is different, update term, downgrade to follower and persist to local storage
+        state_guard.current_term = vote_response.term;
+        state_guard.status = RaftNodeStatus::Follower;
+        match self
+            .persistence_manager
+            .write_term_and_voted_for(state_guard.current_term, Option::None)
+        {
+            Ok(()) => (),
+            Err(e) => {
+                error!("There was a problem writing the term and voted_for variables to stable storage for node {}: {}", self.id, e);
+            }
+        }
+        return;
+    }
+
+    //  the vote wasn't granted, the reason is unknown
+    if !vote_response.vote_granted {
+        return;
+    }
+
+    //  the vote was granted - check if node achieved quorum
+    state_guard
+        .votes_received
+        .insert(vote_response.candidate_id, vote_response.vote_granted);
+
+    if self.can_become_leader(&state_guard) {
+        self.become_leader(&mut state_guard);
+    }
+}
+```
+
+This part of the code shows a node receiving a vote and checking whether the sum of votes it has received so far exceeds the quorum required. A quorum is a majority of the nodes (which is why you typically run an odd number of nodes in a Raft cluster. I actually don't know if you can run an even number of nodes because I don't think the quorum calculations would work).
+
+Now, once a leader has been elected it needs to ensure it stays the leader and it does via a mechanism called heartbeats. Essentially it sends a network request to every follower once every `x` number of milliseconds to ensure that the followers don't start a new election. Here's the implementation.
+
+```rust
+fn send_heartbeat(&self, state_guard: &MutexGuard<'_, RaftNodeState<T>>) {
+    if state_guard.status != RaftNodeStatus::Leader {
+        return;
+    }
+
+    for peer in &self.peers {
+        if *peer == self.id {
+            //  ignore self referencing node
+            continue;
+        }
+
+        let heartbeat_request = AppendEntriesRequest {
+            request_id: rand::thread_rng().gen(),
+            term: state_guard.current_term,
+            leader_id: self.id,
+            prev_log_index: state_guard.log.last().map_or(0, |entry| entry.index),
+            prev_log_term: state_guard.log.last().map_or(0, |entry| entry.term),
+            entries: Vec::<LogEntry<T>>::new(),
+            leader_commit_index: state_guard.commit_index,
+        };
+        let message = RPCMessage::<T>::AppendEntriesRequest(heartbeat_request);
+        let to_address = self.config.id_to_address_mapping.get(peer).expect(
+            format!("Cannot find the id to address mapping for peer id {}", peer).as_str(),
+        );
+        let message_wrapper = MessageWrapper {
+            from_node_id: self.id,
+            to_node_id: *peer,
+            message,
+        };
+        self.rpc_manager
+            .send_message(to_address.clone(), message_wrapper);
+    }
+}
+```
+
+Now, an interesting question is how do we decide what the value of `x` should be above. The raft paper mentions that the time it takes for a leader to broadcast its heartbeats to all followers should be an order of magnitude less than the election timeout. The following excerpt is from the paper
+
+>Leader election is the aspect of Raft where timing is
+most critical. Raft will be able to elect and maintain a
+steady leader as long as the system satisfies the following timing requirement:
+broadcastTime ≪ electionTimeout ≪ MTBF
+In this inequality broadcastTime is the average time it
+takes a server to send RPCs in parallel to every server
+in the cluster and receive their responses; electionTimeout is the election timeout described in Section 5.2; and
+MTBF is the average time between failures for a single
+server. The broadcast time should be an order of magnitude less than the election timeout so that leaders can
+reliably send the heartbeat messages required to keep followers from starting elections
+
+So, this leads me to conclude that the heartbeat timeout must be an experimental value based on the individual configuration of the cluster you are running. For my setup, I used a heartbeat interval of `50ms` because I am running a test cluster which only works on a single node system.
+
+##  Log Replication
+
+Now, we come to the more challenging part of the protocol - log replication. First, we'll tackle log replication on easy mode which assumes no failures
+
+### Easy Log Replication
+
+The happy path of log replication is fairly simple to understand. Let's get the basic structures out of the way first. This is what the request and response looks like
+
+```rust
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct AppendEntriesRequest<T: Clone> {
+    request_id: u16,
+    term: Term,
+    leader_id: ServerId,
+    prev_log_index: u64,
+    prev_log_term: Term,
+    entries: Vec<LogEntry<T>>,
+    leader_commit_index: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct AppendEntriesResponse {
+    request_id: u16,
+    server_id: ServerId,
+    term: Term,
+    success: bool,
+    match_index: u64,
+}
+```
+
+There's a couple of new fields here which are important - `leader_commit_index` in the request and `match_index` in the follower. Trying to accurately parse what these variables do took me days but its actually quite simple.
+
+Underneath every raft node is a state machine (typically the database storage engine). The leader maintains a `leader_commit_index` which indicates up to what point the log has been committed to its own state machine. With every request the leader sends out, it includes this index so that followers can know which log theys can commit to their own state machine. This is an important invariant to maintain because once a log entry has been committed to a state machine it can never be revoked. This is an important safety property of Rust.
+
+Okay, let's look at some code. First, we'll look at the easier case of a leader node getting a response back from a follower.
+
+There are two cases to handle here - success and failure. When the response is successful, the leader checks if its commit index can be incremented.
+
+The leader maintains some state called `match_index` which is an `uint` array with a value for each of its followers. When a response comes in from a follower, if the response was successful, the leader checks what the `match_index` the follower send was. It updates its own state to that value and checks which is the maximum value among its followers that has quorum. It is allowed to commit this value to its own state machine and update its own commit index.
+
+```rust
+fn handle_append_entries_response(&mut self, response: AppendEntriesResponse) {
+    let mut state_guard = self.state.lock().unwrap();
+    if state_guard.status != RaftNodeStatus::Leader {
+        return;
+    }
+
+    let server_index = response.server_id as usize;
+
+    if !response.success {
+        //  reduce the next index for that server and try again
+        state_guard.next_index[server_index] = state_guard.next_index[server_index]
+            .saturating_sub(1)
+            .max(1);
+
+        self.retry_append_request(&mut state_guard, server_index, response.server_id);
+        return;
+    }
+
+    //  the response is successful
+    state_guard.next_index[(response.server_id) as usize] = response.match_index + 1;
+    state_guard.match_index[(response.server_id) as usize] = response.match_index;
+    self.advance_commit_index(&mut state_guard);
+    self.apply_entries(&mut state_guard);
+}
+
+fn advance_commit_index(&self, state_guard: &mut MutexGuard<'_, RaftNodeState<T>>) {
+    assert!(state_guard.status == RaftNodeStatus::Leader);
+
+    //  find all match indexes that have quorum
+    let mut match_index_count: HashMap<u64, u64> = HashMap::new();
+    for &server_match_index in &state_guard.match_index {
+        *match_index_count.entry(server_match_index).or_insert(0) += 1;
+    }
+
+    let new_commit_index = match_index_count
+        .iter()
+        .filter(|(&match_index, &count)| {
+            count >= self.quorum_size().try_into().unwrap()
+                && state_guard
+                    .log
+                    .get((match_index as usize).saturating_sub(1))
+                    .map_or(false, |entry| entry.term == state_guard.current_term)
+        })
+        .map(|(&match_index, _)| match_index)
+        .max();
+    if let Some(max_index) = new_commit_index {
+        state_guard.commit_index = max_index;
+    }
+}
+```
+
+If the append entry request fails, the leader checks to see if there is an earlier log entry that the follower might accept and retries the append entry request with that log entry.
+
+Next, lets look at a follower node handling an append entries request from a leader.
+
+```rust
+fn handle_append_entries_request(
+        &mut self,
+        request: &AppendEntriesRequest<T>,
+    ) -> AppendEntriesResponse {
+    let mut state_guard = self.state.lock().unwrap();
+
+    //  the term check
+    if request.term < state_guard.current_term {
+        return AppendEntriesResponse {
+            request_id: request.request_id,
+            server_id: self.id,
+            term: state_guard.current_term,
+            success: false,
+            match_index: state_guard.log.last().map_or(0, |entry| entry.index),
+        };
+    }
+
+    self.reset_election_timeout(&mut state_guard);
+
+    // log consistency check - check that the term and the index match at the log entry the leader expects
+    let log_index_to_check = request.prev_log_index.saturating_sub(1) as usize;
+    let prev_log_term = state_guard
+        .log
+        .get(log_index_to_check)
+        .map_or(0, |entry| entry.term);
+    let prev_log_index = state_guard
+        .log
+        .get(log_index_to_check)
+        .map_or(0, |entry| entry.index);
+    let log_ok = request.prev_log_index == 0
+        || (request.prev_log_index > 0
+            && request.prev_log_index <= state_guard.log.len() as u64
+            && request.prev_log_term == prev_log_term);
+
+    //  the log check is not OK, give false response
+    if !log_ok {
+        return AppendEntriesResponse {
+            request_id: request.request_id,
+            server_id: self.id,
+            term: state_guard.current_term,
+            success: false,
+            match_index: state_guard.log.last().map_or(0, |entry| entry.index),
+        };
+    }
+
+    if request.entries.len() == 0 {
+        //  this is a  heartbeat message
+        state_guard.commit_index = request.leader_commit_index;
+        self.apply_entries(&mut state_guard);
+        return AppendEntriesResponse {
+            request_id: request.request_id,
+            server_id: self.id,
+            term: state_guard.current_term,
+            success: true,
+            match_index: state_guard.log.last().map_or(0, |entry| entry.index),
+        };
+    }
+
+    //  if there are any subsequent logs on the follower, truncate them and append the new logs
+    if self.len_as_u64(&state_guard.log) > request.prev_log_index {
+        state_guard.log.truncate(request.prev_log_index as usize);
+        state_guard.log.extend_from_slice(&request.entries);
+        if let Err(e) = self
+            .persistence_manager
+            .append_logs_at(&request.entries, request.prev_log_index.saturating_sub(1))
+        {
+            error!("There was a problem appending logs to stable storage for node {} at position {}: {}", self.id, request.prev_log_index - 1, e);
+        }
+        return AppendEntriesResponse {
+            request_id: request.request_id,
+            server_id: self.id,
+            term: state_guard.current_term,
+            success: true,
+            match_index: state_guard.log.last().map_or(0, |entry| entry.index),
+        };
+    }
+
+    //  There are no subsequent logs on the follower, so no possibility of conflicts. Which means the logs can just be appended
+    //  and the response can be returned
+    state_guard.log.append(&mut request.entries.clone());
+    if let Err(e) = self.persistence_manager.append_logs(&request.entries) {
+        error!(
+            "There was a problem appending logs to stable storage for node {}: {}",
+            self.id, e
+        );
+    }
+
+    AppendEntriesResponse {
+        request_id: request.request_id,
+        server_id: self.id,
+        term: state_guard.current_term,
+        success: true,
+        match_index: state_guard.log.last().map_or(0, |entry| entry.index),
+    }
+}
+```
+
+The follower first makes basic sanity checks - am i in a new epoch? No, okay continue. Does the log check pass? Okay, continue. 
+
+Once the basic sanity checks have passsed the leader then checks if it has any subsequent logs that the leader has not included in the request. This is tricky to grasp so look at the image below for a moment
+
+![](/assets/img/databases/raft/log_entries_on_nodes.png)
+
+The leader for term 8 has a max log index of 10 but it has followers which have a log index that is greater than its own maximum. So, what does the follower do in this case? The simple answer is that as long as the entries have not been committed to the state machine on the follower, they can be replaced which is exactly what the code does! It just removes everything past the point that is available in the leader's request and replaces it with the leader's entries.
+
+Once all these checks have been taken care of, the follower is free to return a successful response.
