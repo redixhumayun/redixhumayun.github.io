@@ -34,3 +34,4 @@ gem "jekyll-gist"
 # Adding this gem to workaround the issue where Jekyll breaks when a Ruby version >= 3.0 is used
 # See https://stackoverflow.com/questions/65989040/bundle-exec-jekyll-serve-cannot-load-such-file
 gem "webrick", "~> 1.7"
+gem 'rexml', '~> 3.2.4'
