@@ -6,11 +6,13 @@ category: databases
 
 ##  What Is Raft?
 
-Raft is a famous distributed consensus algorithm which is implemented in various database engines now. The most famous is probably [Yugabyte DB](https://www.yugabyte.com/) a distributed SQL database.
+*Before starting, if you just want to look at the full code, go [here](https://github.com/redixhumayun/raft)*
+
+Raft is a famous distributed consensus algorithm which is implemented in various database engines now. The most famous is probably [Yugabyte DB](https://www.yugabyte.com/), a distributed SQL database.
 
 First, we need to discuss what a distributed SQL database is and why we need distributed consensus on it. There are two classic concepts that come to mind when thinking of a distributed database - replication and sharding. Typically when you think of distributed consensus, its for a replicated database. That is, each copy of the database is identical. 
 
-Now, imagine that we have a distributed SQL database with 3 nodes. Now there's two ways to accept a write - any node can accept a write the way Amazon's Dynamo does from its famous 2007 paper or a single node is elected a leader and accepts a write and replicates it to the followers. It's the second case a protocol like Raft was designed for.
+Now, imagine that we have a distributed replicated SQL database with 3 nodes. Now there's two ways to accept a write - any node can accept a write the way Amazon's Dynamo does from its [famous 2007 paper](https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf) or a single node is elected a leader and accepts a write and replicates it to the followers. It's the second case a protocol like Raft was designed for.
 
 ##  The Raft Paper
 
@@ -27,8 +29,6 @@ If you've heard of [Paxos](https://www.scylladb.com/glossary/paxos-consensus-alg
 ##  Defining The Basic Structure
 
 *Note: Before diving into the code, I want to emphasize that I do not have a formally correct specification because I haven't run it against a formal test suite. I only have my own tests that I've run it against. Also, this was my first time writing anything significant in Rust, so excuse any poor code habits.*
-
-*If you want to look at the full code, go [here](https://github.com/redixhumayun/raft)*
 
 First, we define the basic structure for our node
 
@@ -68,7 +68,9 @@ struct RaftNode<T: RaftTypeTrait, S: StateMachine<T>, F: RaftFileOps<T>> {
 }
 ```
 
-Each raft node has its own state that it needs to maintain. I've segregated this state based on whether its volatile, non-volatile (must be persisted) or is required only for a specific node state. The state is behind a mutex to allow access to it from multiple threads. Typically, you have a node listening for messages on a separate thread and invoking whatever RPC is required and you have the main thread of the node that is doing whatever operations it needs to do.
+Each raft node has its own state that it needs to maintain. I've segregated this state based on whether its volatile, non-volatile (must be persisted) or is required only for a specific node state. The state is behind a mutex to allow access to it from multiple threads. Typically, you have a node listening for messages on a separate thread and invoking whatever RPC is required and you have the main thread of the node that is doing whatever operations it needs to do. In my test implementations I run everything off a single thread rather than putting the node behind an `Arc::mutex` interface.
+
+Each node also has a state machine attached to it. This state machine is a user provided state machine, it could be a database or a key value store etc. There needs to be one method on the state machine called `apply()` or some variant that the cluster call to update the state machine.
 
 Now, nodes communicate with each other via JSON-over-TCP in my implementation. So, we need to set up the communication channel for them. I did this by defining an RPC manager which is then provided to each node. 
 
@@ -84,7 +86,7 @@ struct RPCManager<T: RaftTypeTrait> {
 
 The RPC manager has a few different methods defined on it - the constructor, a method to start, a method to stop and a function to allow a node to indicate to the manager that it wants to send a message to another node called `send_message`.
 
-All messages between nodes are serialized to JSON using the [`serde` crate](https://crates.io/crates/serde) and then de-serialized back using the same crate. (*Note: This obviously isn't a practical implementation because typically you'd use your own protocol to avoid overhead*). 
+All messages between nodes are serialized to JSON and deserialized from JSON using the [`serde` crate](https://crates.io/crates/serde) (*Note: This obviously isn't a practical implementation because typically you'd use your own protocol to avoid overhead*). 
 
 Here's an implementation of what the `send_message` function looks like
 
@@ -121,13 +123,15 @@ Here's an implementation of what the `send_message` function looks like
   }
 ```
 
-Communication between the node and the RPC manager is handled via a MPSC channel in Rust. The receiver stays with the node and the transmitter is with the RPC manager.
+Communication between the node and the RPC manager is handled via an MPSC channel in Rust. The receiver stays with the node and the transmitter is with the RPC manager.
 
 Next, let's dive into the functionality of a Raft cluster. Rather than focusing on each individual RPC function, I'll go through RPC's from the perspective of leader election and appending entries to the cluster.
 
 ##  Log Entry
 
 A quick aside before jumping into the RPC's themselves. We first need to discuss what a log entry itself looks like. Each log entry has the following strucutre. The most important fields here are `term` (explained below) and `index` (a 1-based index).
+
+The `LogEntryCommand` represents state machine related terminology. So here, it can be either `Set` or `Delete`.
 
 ```rust
 
@@ -149,7 +153,7 @@ struct LogEntry<T: Clone> {
 
 ##  Leader Election
 
-This is a core part of the Raft protocol. This allows a leader to be elected in each term or epoch of a Raft cluster. A term is a time period during which one leader reigns. When a new node wants to be elected leader, it needs to increment the term and ask for a vote. I believe this is essentially a logical clock.
+This is a core part of the Raft protocol. This allows a leader to be elected in each term or epoch of a Raft cluster. A term is a time period during which one leader reigns. When a new node wants to be elected leader, it needs to increment the term and ask for a vote. So, something akin to a logical clock.
 
 ![](/assets/img/databases/raft/raft_terms.png)
 
@@ -157,7 +161,7 @@ There are 3 possible states every node can be in - a follower, a candidate or a 
 
 There is also the concept of 2 timeouts in Raft - the election timeout and the heartbeat timeout. When these timeouts occur, there are certain state transitions that must occur. The image below is a good representation of that.
 
-*As an aside, if you're curious why timeouts are required, look the FLP section of [this page](https://dinhtta.github.io/flpcap/). The FLP impossibility theorem is based on a famous paper from 1985. There is a generalisation of this theorem called the [two generals problem](https://mwhittaker.github.io/blog/two_generals_and_time_machines/#:~:text=The%20Two%20Generals'%20Problem%20is%20the%20problem%20of%20designing%20an,an%20algorithm%20that%20achieves%20consensus.)*
+*As an aside, if you're curious why timeouts are required, look the FLP section of [this page](https://dinhtta.github.io/flpcap/). The FLP impossibility theorem is based on a famous paper from 1985. There is a generalisation of this theorem called the [two generals problem](https://mwhittaker.github.io/blog/two_generals_and_time_machines/#:~:text=The%20Two%20Generals'%20Problem%20is%20the%20problem%20of%20designing%20an,an%20algorithm%20that%20achieves%20consensus.) which is fun to learn about.*
 
 ![](/assets/img/databases/raft/state_transitions.png)
 
@@ -219,6 +223,8 @@ Furthermore, if B has a log entry with an index or term greater than the one sen
 
 ```rust
 //  this node has already voted for someone else in this term and it is not the requesting node
+fn handle_vote_request(&mut self, request: &VoteRequest) -> VoteResponse {
+    //  Code removed for brevity
     if state_guard.voted_for != None && state_guard.voted_for != Some(request.candidate_id) {
         debug!("EXIT: handle_vote_request on node {}. Not granting the vote because the node has already voted for someone else", self.id);
         return VoteResponse {
@@ -243,11 +249,13 @@ Furthermore, if B has a log entry with an index or term greater than the one sen
             candidate_id: self.id,
         };
     }
+    //  Code removed for brevity
+}
 ```
 
 Assuming that node B has not granted its vote for anyone in the current election cycle and the log check passes, it can return a successful vote response to A.
 
-Now, let's look at how votes are tallied up
+Now, let's look at how vote responses are handled on the requesting node.
 
 ```rust
 ///  The quorum size is (N/2) + 1, where N = number of servers in the cluster and N is odd
@@ -344,6 +352,8 @@ fn send_heartbeat(&self, state_guard: &MutexGuard<'_, RaftNodeState<T>>) {
 }
 ```
 
+The heartbeat request is just an `AppendEntry` request (more on that below).
+
 Now, an interesting question is how do we decide what the value of `x` should be above. The raft paper mentions that the time it takes for a leader to broadcast its heartbeats to all followers should be an order of magnitude less than the election timeout. The following excerpt is from the paper
 
 >Leader election is the aspect of Raft where timing is
@@ -357,7 +367,7 @@ MTBF is the average time between failures for a single
 server. The broadcast time should be an order of magnitude less than the election timeout so that leaders can
 reliably send the heartbeat messages required to keep followers from starting elections
 
-So, this leads me to conclude that the heartbeat timeout must be an experimental value based on the individual configuration of the cluster you are running. For my setup, I used a heartbeat interval of `50ms` because I am running a test cluster which only works on a single node system.
+So, this leads me to conclude that the heartbeat timeout must be an experimental value based on the individual configuration of the cluster you are running. For my setup, I used a heartbeat interval of `50ms`. Because I am running a test cluster which only works on a single node system, this value just needs to be long enough to allow nodes to send RPC messages to other nodes via TCP sockets and this value seems to work well for me.
 
 ##  Log Replication
 
@@ -389,15 +399,17 @@ struct AppendEntriesResponse {
 }
 ```
 
-There's a couple of new fields here which are important - `leader_commit_index` in the request and `match_index` in the follower. Trying to accurately parse what these variables do took me days but its actually quite simple.
+There's a couple of new fields here which are important - `leader_commit_index` in the request and `match_index` in the follower. Trying to accurately parse what these variables do took me days but its actually quite simple. To accurately explain this, let me first explain part of the state a leader maintains. 
 
-Underneath every raft node is a state machine (typically the database storage engine). The leader maintains a `leader_commit_index` which indicates up to what point the log has been committed to its own state machine. With every request the leader sends out, it includes this index so that followers can know which log theys can commit to their own state machine. This is an important invariant to maintain because once a log entry has been committed to a state machine it can never be revoked. This is an important safety property of Rust.
+On election, a leader initialises the following variables in its state - `next_index` and `match_index`, both of which are `uint` vectors and maintain an index value for each follower. The `next_index` represents the next log entry the leader is going to try and replicate and the `match_index` represents the log entry up to which the leader knows each follower has replicated the entries. So, `next_index` must stay ahead of `match_index`, that's one of the invariants of the Raft state machine.
 
-Okay, let's look at some code. First, we'll look at the easier case of a leader node getting a response back from a follower.
+Now, when a leader sends out an `AppendEntry` RPC to each follower, the follower responds with a `match_index` indicating up to where it has replicated the log and the `leader_commit_index` is used by the leader which log entries can be applied to its own state machine. Once these entries are applied to the state machine, the leader updates the `leader_commit_index`.
 
-There are two cases to handle here - success and failure. When the response is successful, the leader checks if its commit index can be incremented.
+With every request the leader sends out, it includes the `leader_commit_index` so that followers can know which log theys can commit to their own state machine. This is an important invariant to maintain because once a log entry has been committed to a state machine it can never be revoked. This is an important safety property of Raft.
 
-The leader maintains some state called `match_index` which is an `uint` array with a value for each of its followers. When a response comes in from a follower, if the response was successful, the leader checks what the `match_index` the follower send was. It updates its own state to that value and checks which is the maximum value among its followers that has quorum. It is allowed to commit this value to its own state machine and update its own commit index.
+Okay, let's look at some code. First, we'll look at the easier case of a leader node getting a successful response back from a follower.
+
+When a response comes in from a follower, if the response was successful, the leader checks what the `match_index` the follower send was. It updates its own state to that value and checks which is the maximum value among its followers that has quorum. It is allowed to commit this value to its own state machine and update its own commit index.
 
 ```rust
 fn handle_append_entries_response(&mut self, response: AppendEntriesResponse) {
@@ -565,7 +577,7 @@ The leader for term 8 has a max log index of 10 but it has followers which have 
 Once all these checks have been taken care of, the follower is free to return a successful response. Once the follower returns a successful response, the logic above this section runs to check if the leader can update its own `commit_index` and apply entries to its state machine.
 
 ##  Persistence
-This is probably the part of the implementation I did the most inefficiency job on because I'm just not very used to working with file system semantics. Also, Rust being a new language to me probably didn't help. 
+This is probably the part of the implementation I did the most inefficient job on because I'm just not very used to working with file system semantics. Also, Rust being a new language to me probably didn't help. 
 
 I hid the file system mechanics behind an API because I was sure that I'd be changing it in the future, which is why you'll probably notice that its outside of the `main.rs` file. Here's the interface I used for the file operations
 
@@ -601,7 +613,7 @@ The format I chose to write was a CSV style format with separate lines for each 
 1,1,0,1,1 <- The tuple shows (term,log_index,command,key,value)
 ```
 
-The first line of the file can be repeatedly modified because for every term the node can either vote for itself or for another node. I suppose a different implementation could maintain a history of the node voted for in each term but the Raft spec does not make any claims about the file format. Some educational implementations I see don't even write or retrieve from storage. In fact, the Raft spec doesn't include anything about storage, but of course you need to be able to write and retrieve from storage to make the implementation actually work otherwise how you would you recover from a crash?
+The first line of the file can be repeatedly modified because for every term the node can either vote for itself or for another node. I suppose a different implementation could maintain a history of the node voted for in each term but the Raft spec does not make any assertions about the file format. Some educational implementations I see don't even write or retrieve from storage. In fact, the Raft spec doesn't include anything about storage, but of course you need to be able to write and retrieve from storage to make the implementation actually work otherwise how you would you recover from a crash?
 
 Here's some code around how the node restarts from stable storage.
 
@@ -638,7 +650,7 @@ fn restart(&mut self) {
 
 ##  Testing
 
-Setting up a test rig to find bugs in this implementation was the most challenging part of writing the Raft implementation. I'm going to cover that in a separate post because that required quite a bit of reworking on my code. But, I'm going to stop this point at this point.
+Setting up a test rig to find bugs in this implementation was the most challenging part of writing the Raft implementation. I'm going to cover that in a separate post because that's quite involved and it was more challenging to understand that then actually write the Raft implementation itself.
 
 ##  Future Work
 
@@ -646,6 +658,9 @@ There is a lot I want to do in my implementation still, not least changing the w
 
 * Log snapshotting - instead of allowing the log to grow infinitely, keep taking a snapshot of the log and replacing the log up to the snapshot point
 * Deterministic simulation testing - building a dead simple DST rig that I can run with more confidence to find more bugs. Creating scenario-based tests is quite time consuming. If you want to understand about DST, watch [this video](https://www.youtube.com/watch?v=4fFDFbi3toc).
+* Using custom network protocol - Just for fun
+* Using custom binary format for storage to make it more efficient
+* Using a better caching strategy for the file rather than re-opening it each time.
 
 ##  Credits
 
