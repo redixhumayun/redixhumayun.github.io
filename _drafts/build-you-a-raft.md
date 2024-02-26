@@ -219,30 +219,30 @@ Furthermore, if B has a log entry with an index or term greater than the one sen
 
 ```rust
 //  this node has already voted for someone else in this term and it is not the requesting node
-        if state_guard.voted_for != None && state_guard.voted_for != Some(request.candidate_id) {
-            debug!("EXIT: handle_vote_request on node {}. Not granting the vote because the node has already voted for someone else", self.id);
-            return VoteResponse {
-                request_id: request.request_id,
-                term: state_guard.current_term,
-                vote_granted: false,
-                candidate_id: self.id,
-            };
-        }
+    if state_guard.voted_for != None && state_guard.voted_for != Some(request.candidate_id) {
+        debug!("EXIT: handle_vote_request on node {}. Not granting the vote because the node has already voted for someone else", self.id);
+        return VoteResponse {
+            request_id: request.request_id,
+            term: state_guard.current_term,
+            vote_granted: false,
+            candidate_id: self.id,
+        };
+    }
 
-        let last_log_term = state_guard.log.last().map_or(0, |entry| entry.term);
-        let last_log_index = state_guard.log.last().map_or(0, |entry| entry.index);
+    let last_log_term = state_guard.log.last().map_or(0, |entry| entry.term);
+    let last_log_index = state_guard.log.last().map_or(0, |entry| entry.index);
 
-        let log_check = request.last_log_term > last_log_term
-            || (request.last_log_term == last_log_term && request.last_log_index >= last_log_index);
+    let log_check = request.last_log_term > last_log_term
+        || (request.last_log_term == last_log_term && request.last_log_index >= last_log_index);
 
-        if !log_check {
-            return VoteResponse {
-                request_id: request.request_id,
-                term: state_guard.current_term,
-                vote_granted: false,
-                candidate_id: self.id,
-            };
-        }
+    if !log_check {
+        return VoteResponse {
+            request_id: request.request_id,
+            term: state_guard.current_term,
+            vote_granted: false,
+            candidate_id: self.id,
+        };
+    }
 ```
 
 Assuming that node B has not granted its vote for anyone in the current election cycle and the log check passes, it can return a successful vote response to A.
@@ -560,5 +560,98 @@ Once the basic sanity checks have passsed the leader then checks if it has any s
 ![](/assets/img/databases/raft/log_entries_on_nodes.png)
 
 The leader for term 8 has a max log index of 10 but it has followers which have a log index that is greater than its own maximum. So, what does the follower do in this case? The simple answer is that as long as the entries have not been committed to the state machine on the follower, they can be replaced which is exactly what the code does! It just removes everything past the point that is available in the leader's request and replaces it with the leader's entries.
+[Note: This is actually incorrect, because this could be an outdated RPC from the leader which might not contain the latest entries. But, that does not mean they should be removed. See Jon Gjengset's guide to Raft [here](https://thesquareplanet.com/blog/students-guide-to-raft/) for more details].
 
-Once all these checks have been taken care of, the follower is free to return a successful response.
+Once all these checks have been taken care of, the follower is free to return a successful response. Once the follower returns a successful response, the logic above this section runs to check if the leader can update its own `commit_index` and apply entries to its state machine.
+
+##  Persistence
+This is probably the part of the implementation I did the most inefficiency job on because I'm just not very used to working with file system semantics. Also, Rust being a new language to me probably didn't help. 
+
+I hid the file system mechanics behind an API because I was sure that I'd be changing it in the future, which is why you'll probably notice that its outside of the `main.rs` file. Here's the interface I used for the file operations
+
+```rust
+pub trait RaftFileOps<T: Clone + FromStr + Display> {
+    fn read_term_and_voted_for(&self) -> Result<(Term, ServerId), io::Error>;
+    fn write_term_and_voted_for(
+        &self,
+        term: Term,
+        voted_for: Option<ServerId>,
+    ) -> Result<(), io::Error>;
+    fn read_logs(&self, log_index: u64) -> Result<Vec<LogEntry<T>>, io::Error>;
+    fn append_logs(&mut self, entries: &Vec<LogEntry<T>>) -> Result<(), io::Error>;
+    fn append_logs_at(
+        &mut self,
+        entries: &Vec<LogEntry<T>>,
+        log_index: u64,
+    ) -> Result<(), io::Error>;
+}
+
+pub struct DirectFileOpsWriter {
+    file_path: String,
+    file: RefCell<Option<File>>,
+}
+```
+
+I use a `RefCell` for the `DirectFileOpsWriter` because I didn't want to deal with Rust's compiler complaining about multiple mutable borrows when I'm sure that a mutable borrow on these methods will not affect anything on the Raft node itself. I'm still not a 100% sure that this is the "correct" approach in Rust. Perhaps I need to re-design my structure itself to avoid using this pattern.
+
+The format I chose to write was a CSV style format with separate lines for each entry. So, it looks something like this
+
+```
+1,2 <- This is the term and voted_for entries. The node voted in term 1 for node 2
+1,1,0,1,1 <- The tuple shows (term,log_index,command,key,value)
+```
+
+The first line of the file can be repeatedly modified because for every term the node can either vote for itself or for another node. I suppose a different implementation could maintain a history of the node voted for in each term but the Raft spec does not make any claims about the file format. Some educational implementations I see don't even write or retrieve from storage. In fact, the Raft spec doesn't include anything about storage, but of course you need to be able to write and retrieve from storage to make the implementation actually work otherwise how you would you recover from a crash?
+
+Here's some code around how the node restarts from stable storage.
+
+```rust
+fn restart(&mut self) {
+    let mut state_guard = self.state.lock().unwrap();
+    state_guard.status = RaftNodeStatus::Follower;
+    state_guard.next_index = vec![1; self.config.cluster_nodes.len()];
+    state_guard.match_index = vec![0; self.config.cluster_nodes.len()];
+    state_guard.commit_index = 0;
+    state_guard.votes_received = HashMap::new();
+
+    let (term, voted_for) = match self.persistence_manager.read_term_and_voted_for() {
+        Ok((t, v)) => (t, v),
+        Err(e) => {
+            panic!(
+                "There was an error while reading the term and voted for {}",
+                e
+            );
+        }
+    };
+    state_guard.current_term = term;
+    state_guard.voted_for = Some(voted_for);
+
+    let log_entries = match self.persistence_manager.read_logs(1) {
+        Ok(entries) => entries,
+        Err(e) => {
+            panic!("There was an error while reading the logs {}", e);
+        }
+    };
+    state_guard.log = log_entries;
+}
+```
+
+##  Testing
+
+Setting up a test rig to find bugs in this implementation was the most challenging part of writing the Raft implementation. I'm going to cover that in a separate post because that required quite a bit of reworking on my code. But, I'm going to stop this point at this point.
+
+##  Future Work
+
+There is a lot I want to do in my implementation still, not least changing the way I write to and retrieve from storage. Another few things that most people do in their implementations:
+
+* Log snapshotting - instead of allowing the log to grow infinitely, keep taking a snapshot of the log and replacing the log up to the snapshot point
+* Deterministic simulation testing - building a dead simple DST rig that I can run with more confidence to find more bugs. Creating scenario-based tests is quite time consuming. If you want to understand about DST, watch [this video](https://www.youtube.com/watch?v=4fFDFbi3toc).
+
+##  Credits
+
+There's quite a few useful posts and repos out there that helped me significantly while doing this implementation. Here are a few of those.
+
+* [Phil Eaton's Raft implementation](https://github.com/eatonphil/raft-rs)
+* [Jacky Zhao's Raft implementation](https://github.com/jackyzha0/miniraft)
+* [Jon Gjengset's guide to Raft](https://thesquareplanet.com/blog/students-guide-to-raft/) -> I only read it while writing this post and it already helped me uncover a bug
+* [The TLA+ spec of Raft by Diego Ongaro](https://github.com/ongardie/raft.tla)
