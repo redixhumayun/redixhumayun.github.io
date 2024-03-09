@@ -331,7 +331,7 @@ pub fn advance_time_by(&mut self, duration: Duration) {
 }
 ```
 
-These methods are helper methods which allow my tests to move the cluster into specific states. There are two more methods I found super helpful while doing the testing which are below
+These methods are helper methods which allow my tests to move the cluster into specific states. There are two more methods I found super helpful while doing the testing which are below.
 
 ```rust
 /// Separates the cluster into two smaller clusters where only the nodes within
@@ -363,3 +363,330 @@ pub fn heal_partition(&mut self) {
     }
 }
 ```
+
+And here's how the code for creating, starting & stopping a cluster.
+
+```rust
+pub fn new(number_of_nodes: u64, config: ClusterConfig) -> Self {
+    let mut nodes: Vec<RaftNode<i32, KeyValueStore<i32>, DirectFileOpsWriter>> =
+        Vec::new();
+    let nodes_map: BTreeMap<
+        ServerId,
+        RaftNode<i32, KeyValueStore<i32>, DirectFileOpsWriter>,
+    > = BTreeMap::new();
+
+    let node_ids: Vec<ServerId> = (0..number_of_nodes).collect();
+    let addresses: Vec<String> = config
+        .ports
+        .iter()
+        .map(|port| format!("127.0.0.1:{}", port))
+        .collect();
+    let mut id_to_address_mapping: HashMap<ServerId, String> = HashMap::new();
+    for (node_id, address) in node_ids.iter().zip(addresses.iter()) {
+        id_to_address_mapping.insert(*node_id, address.clone());
+    }
+
+    let mut counter = 0;
+    for (node_id, address) in node_ids.iter().zip(addresses.iter()) {
+        let server_config = ServerConfig {
+            election_timeout: config.election_timeout,
+            heartbeat_interval: config.heartbeat_interval,
+            address: address.clone(),
+            port: config.ports[counter],
+            cluster_nodes: node_ids.clone(),
+            id_to_address_mapping: id_to_address_mapping.clone(),
+        };
+
+        let state_machine = KeyValueStore::<i32>::new();
+        let persistence_manager = DirectFileOpsWriter::new("data", *node_id).unwrap();
+        let (to_node_sender, from_rpc_receiver) =
+            mpsc::channel::<MessageWrapper<i32>>();
+        let rpc_manager = CommunicationLayer::MockRPCManager(MockRPCManager::new(
+            *node_id,
+            to_node_sender.clone(),
+        ));
+        let mock_clock = RaftNodeClock::MockClock(MockClock {
+            current_time: Instant::now(),
+        });
+
+        let node = RaftNode::new(
+            *node_id,
+            state_machine,
+            server_config,
+            node_ids.clone(),
+            persistence_manager,
+            rpc_manager,
+            to_node_sender,
+            from_rpc_receiver,
+            mock_clock,
+        );
+        nodes.push(node);
+        counter += 1;
+    }
+    let message_queue = Vec::new();
+
+    let mut connectivity_hm: HashMap<ServerId, HashSet<ServerId>> = HashMap::new();
+    for node_id in &node_ids {
+        connectivity_hm.insert(*node_id, node_ids.clone().into_iter().collect());
+    }
+
+    TestCluster {
+        nodes,
+        nodes_map,
+        message_queue,
+        connectivity: connectivity_hm,
+        config,
+    }
+}
+
+pub fn start(&mut self) {
+    for node in &mut self.nodes {
+        node.start();
+    }
+}
+
+pub fn stop(&self) {
+    for node in &self.nodes {
+        node.stop();
+    }
+}
+```
+
+##  Actual Tests
+
+Now that we have a reasonable test harness set up, I'm going to dive into some specific test scenarios to explain how I use the test harness to move the cluster into a specific configuration and then test out certain scenarios. 
+
+*Note: After spending time doing this, I understand why people prefer property based testing or fuzz testing as a methodology. Creating scenario based tests is a very time consuming process and doesn't give you enough coverage to justify the time spent on it.*
+
+We'll start with some simple tests for a single node cluster. 
+
+```rust
+const ELECTION_TIMEOUT: Duration = Duration::from_millis(150);
+const HEARTBEAT_INTERVAL: Duration = Duration::from_millis(50);
+const MAX_TICKS: u64 = 100;
+
+/// This test checks whether a node in a single cluster will become leader as soon as the election timeout is reached
+#[test]
+fn leader_election() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    //  create a cluster with a single node first
+    let cluster_config = ClusterConfig {
+        election_timeout: ELECTION_TIMEOUT,
+        heartbeat_interval: HEARTBEAT_INTERVAL,
+        ports: vec![8000],
+    };
+    let mut cluster = TestCluster::new(1, cluster_config);
+    cluster.start();
+    cluster.advance_time_by(ELECTION_TIMEOUT + Duration::from_millis(100 + 5)); //  picking 255 here because 150 + a max jitter of 100 guarantees that election has timed out
+    cluster.wait_for_stable_leader(MAX_TICKS);
+    cluster.stop();
+    assert_eq!(cluster.has_leader(), true);
+}
+```
+
+You can see that setting up the cluster earlier makes testing significantly easier here. I just call my helper methods on the cluster to move the cluster into a specific state and then assert whatever conditions I want against the cluster.
+
+*As an aside, you could convert this to a property based test using the proptest crate to change the number of nodes in the cluster to determine that a leader gets elected regardless of the number of nodes in the cluster. Something like the below code*
+
+```rust
+extern crate proptest;
+use proptest::prelude::*;
+use std::time::Duration;
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(10))]
+
+    fn leader_election_property_based_test(node_count in 1usize..5) {
+        let _ = env_logger::builder().is_test(true).try_init();
+        
+        let cluster_config = ClusterConfig {
+            election_timeout: ELECTION_TIMEOUT,
+            heartbeat_interval: HEARTBEAT_INTERVAL,
+            ports: (8000..8000 + node_count as u16).collect(),
+        };
+        let mut cluster = TestCluster::new(node_count, cluster_config);
+        cluster.start();
+        
+        cluster.advance_time_by(ELECTION_TIMEOUT + Duration::from_millis(100 + 5));
+        cluster.wait_for_stable_leader(MAX_TICKS * node_count as u64); // Adjusted wait time
+        cluster.stop();
+        
+        assert_eq!(cluster.has_leader(), true);
+    }
+}
+```
+
+Here's a slightly more complicated test with 3 nodes that simulates a network partition in the cluster and asserts that a leader still gets elected in the partitioned cluster.
+
+```rust
+/// This test models the scenario where the leader in a cluster is network partitioned from the
+/// rest of the cluster and a new leader is elected
+#[test]
+fn network_partition_new_leader() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    let cluster_config = ClusterConfig {
+        election_timeout: ELECTION_TIMEOUT,
+        heartbeat_interval: HEARTBEAT_INTERVAL,
+        ports: vec![8000, 8001, 8002],
+    };
+    let mut cluster = TestCluster::new(3, cluster_config);
+    cluster.start();
+    cluster.advance_time_by_for_node(0, ELECTION_TIMEOUT + Duration::from_millis(50));
+    cluster.wait_for_stable_leader(MAX_TICKS);
+
+    //  partition the leader from the rest of the group
+    let group1 = &[cluster.get_leader().unwrap().id];
+    let group2 = &cluster
+        .get_all_followers()
+        .iter()
+        .map(|node| node.id)
+        .collect::<Vec<ServerId>>();
+    cluster.partition(group1, group2);
+    cluster.advance_time_by_for_node(1, ELECTION_TIMEOUT + Duration::from_millis(100));
+    cluster.wait_for_stable_leader_partition(MAX_TICKS, group2);
+    cluster.stop();
+    assert_eq!(cluster.has_leader_in_partition(group2), true);
+}
+```
+
+Again, you can see how useful the helper methods turn out to be because it's much easier to separate one node from the rest by simulating a network partition and then checking certain properties on the individual partitions.
+
+Here's a much more complicated scenario-based test which models a network partition occurring between the leader and the rest of the cluster, the network partition healing and the old leader rejoining the rest of the cluster and having to catch up
+
+```rust
+/// The test models the following scenario
+/// 1. A leader is elected
+/// 2. Client requests are received and replicated
+/// 3. A partition occurs and a new leader is elected
+/// 4. Clients requests are processed by the new leader
+/// 5. The partition heals and the old leader rejoins the cluster
+/// 6. The old leader must recognize its a follower and get caught up with the new leader
+#[test]
+fn network_partition_log_healing() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    let cluster_config = ClusterConfig {
+        election_timeout: ELECTION_TIMEOUT,
+        heartbeat_interval: HEARTBEAT_INTERVAL,
+        ports: vec![8000, 8001, 8002],
+    };
+    let mut cluster = TestCluster::new(3, cluster_config);
+
+    //  cluster starts and a leader is elected
+    cluster.start();
+    cluster.advance_time_by_for_node(0, ELECTION_TIMEOUT + Duration::from_millis(50));
+    cluster.wait_for_stable_leader(MAX_TICKS);
+    assert_eq!(cluster.has_leader(), true);
+
+    //  client requests are received and replicated across cluster
+    let current_leader_term = cluster
+        .get_leader()
+        .unwrap()
+        .state
+        .lock()
+        .unwrap()
+        .current_term;
+    let mut last_log_index = cluster
+        .get_leader()
+        .unwrap()
+        .state
+        .lock()
+        .unwrap()
+        .log
+        .last()
+        .map_or(0, |entry| entry.index);
+    last_log_index += 1;
+    let log_entry_1 = LogEntry {
+        term: current_leader_term,
+        index: last_log_index,
+        command: LogEntryCommand::Set,
+        key: "a".to_string(),
+        value: 1,
+    };
+    last_log_index += 1;
+    let log_entry_2 = LogEntry {
+        term: current_leader_term,
+        index: last_log_index,
+        command: LogEntryCommand::Set,
+        key: "b".to_string(),
+        value: 2,
+    };
+    cluster.apply_entries_across_cluster(vec![&log_entry_1, &log_entry_2], MAX_TICKS);
+    cluster.verify_logs_across_cluster_for(vec![&log_entry_1, &log_entry_2], MAX_TICKS);
+
+    //  partition and new leader election here
+    let group1 = &[cluster.get_leader().unwrap().id];
+    let group2 = &cluster
+        .get_all_followers()
+        .iter()
+        .map(|node| node.id)
+        .collect::<Vec<ServerId>>();
+    cluster.partition(group1, group2);
+    cluster.advance_time_by_for_node(1, ELECTION_TIMEOUT + Duration::from_millis(100));
+    cluster.wait_for_stable_leader_partition(MAX_TICKS, group2);
+    assert_eq!(cluster.has_leader_in_partition(group2), true);
+
+    //  send requests to group2 leader
+    let log_entry_3 = {
+        let current_leader_term = cluster
+            .get_leader_in_cluster(group2)
+            .unwrap()
+            .state
+            .lock()
+            .unwrap()
+            .current_term;
+        let mut last_log_index = cluster
+            .get_leader()
+            .unwrap()
+            .state
+            .lock()
+            .unwrap()
+            .log
+            .last()
+            .map_or(0, |entry| entry.index);
+        last_log_index += 1;
+        let log_entry_3 = LogEntry {
+            term: current_leader_term,
+            index: last_log_index,
+            command: LogEntryCommand::Set,
+            key: "c".to_string(),
+            value: 3,
+        };
+        cluster.apply_entries_across_cluster_partition(
+            vec![&log_entry_3],
+            group2,
+            MAX_TICKS,
+        );
+        log_entry_3
+    };
+
+    //  partition heals and old leader rejoins the cluster
+    //  cluster needs to be verified to ensure all logs are up to date
+    let leader_id = cluster.get_leader_in_cluster(group2).unwrap().id;
+    cluster.heal_partition();
+    cluster.tick_by(MAX_TICKS);
+    cluster.wait_for_stable_leader(MAX_TICKS);
+    assert_eq!(cluster.get_leader().unwrap().id, leader_id);
+    cluster.verify_logs_across_cluster_for(
+        vec![&log_entry_1, &log_entry_2, &log_entry_3],
+        MAX_TICKS,
+    );
+}
+```
+
+I think this is one of those situations where property-based testing would really shine not because it would make setting up the test simpler but because it would allow me to use the same test case and test the cluster under different scenarios. 
+
+For instance, I could use `proptest` to generate clusters of different sizes, generate different variations of partitions and add a different number of log entries based on some generated value. This would give me more coverage.
+
+### A Little Bit About DST
+
+I mentioned earlier that I've been digging into DST a little bit and while writing this post it clicked for me that DST is mostly a superset of property-based testing and fuzz testing. (I could be wrong).
+
+If we take the last test case we were discussing about generating clusters of different sizes, different variations of partitions and adding a different number of log entries, imagine if we did that with a randomly generated number which we can call a seed value.
+
+This seed value would then be used to generate all the other values in a deterministic way. For instance, the number of nodes in the cluster would be the seed value itself, the number of log entries written could be `seed_value * 2` and so on. This way, if the test case fails and the seed value is logged, I can re-create the test scenario using nothing but the seed value itself.
+
+##  Conclusion
+
+So there you have it. Writing a test harness for a distributed system is significantly more challenging than writing the system itself I think. I can see now why FoundationDB spent years building their simulator before writing their engine, although I don't think that's a realistic approach for most people.
+
+Still, it's fun to dig into this stuff.
