@@ -10,5 +10,5 @@ This website is my attempt at documenting my learnings in the field.
 I am currently looking out for new opportunities.
 
 <div class="image-container">
-  <img src="/assets/img/DSC_0416.jpg">
+  <img src="/assets/img/profile-photo.jpg">
 </div>
