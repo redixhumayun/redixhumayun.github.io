@@ -12,7 +12,7 @@ Raft is a famous distributed consensus algorithm which is implemented in various
 
 First, we need to discuss what a distributed SQL database is and why we need distributed consensus on it. There are two classic concepts that come to mind when thinking of a distributed database - replication and sharding. Typically when you think of distributed consensus, its for a replicated database. That is, each copy of the database is identical. 
 
-Now, imagine that we have a distributed replicated SQL database with 3 nodes. Now there's two ways to accept a write - any node can accept a write the way Amazon's Dynamo does from its [famous 2007 paper](https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf) or a single node is elected a leader and accepts a write and replicates it to the followers. It's the second case a protocol like Raft was designed for.
+Now, imagine that we have a distributed replicated SQL database with 3 nodes. Now there's two ways to accept a write - any node can accept a write the way Amazon's Dynamo does from its [famous 2007 paper](https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf), or a single node is elected a leader and accepts a write and replicates it to the followers. It's the second case a protocol like Raft was designed for.
 
 ##  The Raft Paper
 
@@ -70,7 +70,7 @@ struct RaftNode<T: RaftTypeTrait, S: StateMachine<T>, F: RaftFileOps<T>> {
 
 Each raft node has its own state that it needs to maintain. I've segregated this state based on whether its volatile, non-volatile (must be persisted) or is required only for a specific node state. The state is behind a mutex to allow access to it from multiple threads. Typically, you have a node listening for messages on a separate thread and invoking whatever RPC is required and you have the main thread of the node that is doing whatever operations it needs to do. In my test implementations I run everything off a single thread rather than putting the node behind an `Arc::mutex` interface.
 
-Each node also has a state machine attached to it. This state machine is a user provided state machine, it could be a database or a key value store etc. There needs to be one method on the state machine called `apply()` or some variant that the cluster call to update the state machine.
+Each node also has a state machine attached to it. This state machine is a user provided state machine, it could be a database or a key value store etc. There needs to be one method on the state machine called `apply()` or some variant that the cluster calls to update the state machine.
 
 Now, nodes communicate with each other via JSON-over-TCP in my implementation. So, we need to set up the communication channel for them. I did this by defining an RPC manager which is then provided to each node. 
 
@@ -129,7 +129,7 @@ Next, let's dive into the functionality of a Raft cluster. Rather than focusing 
 
 ##  Log Entry
 
-A quick aside before jumping into the RPC's themselves. We first need to discuss what a log entry itself looks like. Each log entry has the following strucutre. The most important fields here are `term` (explained below) and `index` (a 1-based index).
+A quick aside before jumping into the RPC's themselves. We first need to discuss what a log entry itself looks like. Each log entry has the following structure. The most important fields here are `term` (explained below) and `index` (a 1-based index).
 
 The `LogEntryCommand` represents state machine related terminology. So here, it can be either `Set` or `Delete`.
 
@@ -161,7 +161,7 @@ There are 3 possible states every node can be in - a follower, a candidate or a 
 
 There is also the concept of 2 timeouts in Raft - the election timeout and the heartbeat timeout. When these timeouts occur, there are certain state transitions that must occur. The image below is a good representation of that.
 
-*As an aside, if you're curious why timeouts are required, look the FLP section of [this page](https://dinhtta.github.io/flpcap/). The FLP impossibility theorem is based on a famous paper from 1985. There is a generalisation of this theorem called the [two generals problem](https://mwhittaker.github.io/blog/two_generals_and_time_machines/#:~:text=The%20Two%20Generals'%20Problem%20is%20the%20problem%20of%20designing%20an,an%20algorithm%20that%20achieves%20consensus.) which is fun to learn about.*
+*As an aside, if you're curious why timeouts are required, look at the FLP section of [this page](https://dinhtta.github.io/flpcap/). The FLP impossibility theorem is based on a famous paper from 1985. There is a generalisation of this theorem called the [two generals problem](https://mwhittaker.github.io/blog/two_generals_and_time_machines/#:~:text=The%20Two%20Generals'%20Problem%20is%20the%20problem%20of%20designing%20an,an%20algorithm%20that%20achieves%20consensus.) which is fun to learn about.*
 
 ![](/assets/img/databases/raft/state_transitions.png)
 
@@ -367,13 +367,11 @@ MTBF is the average time between failures for a single
 server. The broadcast time should be an order of magnitude less than the election timeout so that leaders can
 reliably send the heartbeat messages required to keep followers from starting elections
 
-So, this leads me to conclude that the heartbeat timeout must be an experimental value based on the individual configuration of the cluster you are running. For my setup, I used a heartbeat interval of `50ms`. Because I am running a test cluster which only works on a single node system, this value just needs to be long enough to allow nodes to send RPC messages to other nodes via TCP sockets and this value seems to work well for me.
+So, this leads me to conclude that the heartbeat timeout must be an experimental value based on the individual configuration of the cluster you are running. For my setup, I used a heartbeat interval of `50ms`. Because I am running a test cluster which works on a single server, this value just needs to be long enough to allow nodes to send RPC messages to other nodes via TCP sockets via the loopback interface.
 
 ##  Log Replication
 
 Now, we come to the more challenging part of the protocol - log replication. First, we'll tackle log replication on easy mode which assumes no failures
-
-### Easy Log Replication
 
 The happy path of log replication is fairly simple to understand. Let's get the basic structures out of the way first. This is what the request and response looks like
 
@@ -399,17 +397,17 @@ struct AppendEntriesResponse {
 }
 ```
 
-There's a couple of new fields here which are important - `leader_commit_index` in the request and `match_index` in the follower. Trying to accurately parse what these variables do took me days but its actually quite simple. To accurately explain this, let me first explain part of the state a leader maintains. 
+There's a couple of new fields here which are important - `leader_commit_index` in the request and `match_index` in the follower. Trying to accurately parse what these variables do took me days but its actually quite simple. To accurately explain this, let me first explain the state a leader maintains. 
 
 On election, a leader initialises the following variables in its state - `next_index` and `match_index`, both of which are `uint` vectors and maintain an index value for each follower. The `next_index` represents the next log entry the leader is going to try and replicate and the `match_index` represents the log entry up to which the leader knows each follower has replicated the entries. So, `next_index` must stay ahead of `match_index`, that's one of the invariants of the Raft state machine.
 
-Now, when a leader sends out an `AppendEntry` RPC to each follower, the follower responds with a `match_index` indicating up to where it has replicated the log and the `leader_commit_index` is used by the leader which log entries can be applied to its own state machine. Once these entries are applied to the state machine, the leader updates the `leader_commit_index`.
+Now, when a leader sends out an `AppendEntry` RPC to each follower, the follower responds with a `match_index` indicating up to where it has replicated the log and the `leader_commit_index` is used by the leader to determine which log entries can be applied to its own state machine. Once these entries are applied to the state machine, the leader updates the `leader_commit_index`.
 
-With every request the leader sends out, it includes the `leader_commit_index` so that followers can know which log theys can commit to their own state machine. This is an important invariant to maintain because once a log entry has been committed to a state machine it can never be revoked. This is an important safety property of Raft.
+With every request the leader sends out, it includes the `leader_commit_index` so that followers can know which logs they can commit to their own state machine. This is an important invariant to maintain because once a log entry has been committed to a state machine it can never be revoked. This is an important safety property of Raft.
 
 Okay, let's look at some code. First, we'll look at the easier case of a leader node getting a successful response back from a follower.
 
-When a response comes in from a follower, if the response was successful, the leader checks what the `match_index` the follower send was. It updates its own state to that value and checks which is the maximum value among its followers that has quorum. It is allowed to commit this value to its own state machine and update its own commit index.
+When a response comes in from a follower, if the response was successful, the leader checks what the `match_index` the follower sent was. It updates its own state to that value and checks which is the maximum value among its followers that has quorum. It is allowed to commit this value to its own state machine and update its own commit index.
 
 ```rust
 fn handle_append_entries_response(&mut self, response: AppendEntriesResponse) {
