@@ -4,7 +4,7 @@ title: "Build You A Raft - Part II"
 category: databases
 ---
 
-This post is a follow up to my [previous post]{% post_url 2024-02-26-build-you-a-raft-part-i %} about how to implement the Raft consensus protocol in Rust. In the previous post I went through the basics of how to set up the Raft cluster and implement the logic required for the RPC's.
+This post is a follow up to my [previous post]({% post_url 2024-02-26-build-you-a-raft-part-i %}) about how to implement the Raft consensus protocol in Rust. In the previous post I went through the basics of how to set up the Raft cluster and implement the logic required for the RPC's.
 
 In this post, I'm going to focus more on how to go about testing the cluster. While building the Raft implementation, I realised that [half the battle with distributed systems](https://x.com/redixhumayun/status/1754745602049774077?s=20) is in building a useful test harness. This has become such a problem in the distributed systems space that companies like [FoundationDB](https://apple.github.io/foundationdb/testing.html) and [TigerBeetle](https://github.com/tigerbeetle/tigerbeetle/blob/main/src/simulator.zig) have written something called a deterministic simulation testing (DST) engine. It's a fancy term for a more advanced form of fuzz testing (atleast from what I understand).
 
