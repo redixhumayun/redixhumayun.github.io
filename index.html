@@ -50,7 +50,7 @@
         <ul class="post-list">
           {% for post in site.posts %}
           <li>
-            <span class="post-meta">{{ post.date }}</span>
+            <span class="post-meta">{{ post.date | date: "%Y-%m-%d" }}</span>
             <h3>
               <a class="post-link" href="{{ post.url }}">{{ post.title }}</a>
             </h3>
