@@ -21,7 +21,7 @@ a, a:visited, a:hover{
 }
 
 .site-nav .trigger .page-link {
-  color: #FF4633
+  color: #FF4633;
 }
 
 /*clearfix hack*/
@@ -45,3 +45,10 @@ a, a:visited, a:hover{
   height: 250px;
   margin: 0 auto;
 }
+
+/* Adjusted styles for vertically scrollable code blocks */
+.highlight > pre {
+  overflow-y: auto;
+  max-height: 500px; /* Adjust the height as needed */
+}
+

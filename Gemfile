@@ -32,6 +32,6 @@ gem "wdm", "~> 0.1.0" if Gem.win_platform?
 gem "jekyll-gist"
 
 # Adding this gem to workaround the issue where Jekyll breaks when a Ruby version >= 3.0 is used
-# See https://stackoverflow.com/questions/65989040/bundle-exec-jekyll-serve-cannot-load-such-file
+# See https://stackoverflow.com/questions/65989040/bundle-exec-jekyll-serve-cannot-load-such-file. Also see https://jekyllrb.com/docs/
 gem "webrick", "~> 1.7"
 gem 'rexml', '~> 3.2.4'

@@ -648,7 +648,7 @@ fn restart(&mut self) {
 
 ##  Testing
 
-Setting up a test rig to find bugs in this implementation was the most challenging part of writing the Raft implementation. I'm going to cover that in a separate post because that's quite involved and it was more challenging to understand that then actually write the Raft implementation itself.
+Setting up a test rig to find bugs in this implementation was the most challenging part of writing the Raft implementation. I'm going to cover that in a [separate post]({% post_url 2024-03-10-build-you-a-raft-part-ii %}) because that's quite involved and it was more challenging to understand that then actually write the Raft implementation itself.
 
 ##  Future Work
 
