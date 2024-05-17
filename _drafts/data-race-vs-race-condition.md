@@ -352,3 +352,8 @@ error[E0502]: cannot borrow `data` as mutable because it is also borrowed as imm
 ```
 
 The basic underlying principle behind Rust preventing data races is quite simple: you can either have a single mutable reference to some location in memory and mutate that data in any way you wish, or you can hold multiple immutable references to some location in memory and read from it via as many threads as you'd like.
+
+##  References
+
+1. [Race Condition vs Data Race](https://blog.regehr.org/archives/490)
+2. [Rustnomicon on data races and race conditions](https://doc.rust-lang.org/nomicon/races.html#:~:text=However%20Rust%20does%20not%20prevent,by%20frameworks%20such%20as%20RTIC.)
