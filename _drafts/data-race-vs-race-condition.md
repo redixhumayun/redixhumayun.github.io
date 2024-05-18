@@ -153,9 +153,9 @@ I've introduced a couple of sleeps in the code and added some logs to increase t
 
 It's impossible for the Rust compiler to catch the issue here because this is an application logic error. As far as the compiler is concerned, everything is wrapped behind an appropriate mutex and the data behind the mutex is being read correctly.
 
-Now, let's look at a subset of a race condition called a data race condition - something that the Rust compiler can definitely catch.
+Now, let's look at a subset of a race condition called a data race - something that the Rust compiler can definitely catch.
 
-##  Data Race Conditions
+##  Data Races
 
 ```rust
 use std::sync::{Arc, Mutex};
