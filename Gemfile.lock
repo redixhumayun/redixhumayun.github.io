@@ -85,8 +85,10 @@ DEPENDENCIES
   jekyll (~> 3.8.5)
   jekyll-feed (~> 0.6)
   jekyll-gist
+  kramdown (~> 1.14)
   minima (~> 2.0)
   rexml (~> 3.2.4)
+  rouge (~> 3.0)
   tzinfo-data
   webrick (~> 1.7)
 

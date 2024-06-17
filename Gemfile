@@ -35,3 +35,6 @@ gem "jekyll-gist"
 # See https://stackoverflow.com/questions/65989040/bundle-exec-jekyll-serve-cannot-load-such-file. Also see https://jekyllrb.com/docs/
 gem "webrick", "~> 1.7"
 gem 'rexml', '~> 3.2.4'
+
+gem "kramdown", '~> 1.14'
+gem "rouge", '~> 3.0'
