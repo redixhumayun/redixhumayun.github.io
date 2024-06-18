@@ -4,13 +4,21 @@ title: "Building An LSM Engine Part I"
 category: databases
 ---
 
-*Before starting this post, I want to mention that I'm writing the posts in this series based on [a course](https://skyzh.github.io/mini-lsm/00-preface.html) I completed. I can't recommend the course highly enough. If you're actually interested in really intuiting an LSM engine, I recommend you do the course yourself.*
+*I'm writing the posts in this series based on [a course](https://skyzh.github.io/mini-lsm/00-preface.html) I completed. I can't recommend the course highly enough. If you're actually interested in really intuiting an LSM engine, I recommend you do the course yourself.*
 
-This is a series of posts around building an LSM-based key-value store. It will include flushing memtables to disk, compaction and a very minimal implementation of serializable snapshot isolation (SSI). If you want to see the complete code for all sections of this series, [check it out here](https://github.com/redixhumayun/mini-lsm). If you want to see the complete code for only this post, [check out this commit](https://github.com/redixhumayun/mini-lsm/commit/f88ba7a87e2a1f076153b2b49759b1da4734fa83). I'm going to follow the pattern of the course, so one post for every week of the course. The commits on my repo follow the same pattern, so you should be able to easily tell which commit to checkout.
+This is a series of posts around building an LSM-based key-value store. It will include flushing memtables to disk, compaction and a very minimal implementation of serializable snapshot isolation (SSI) using Write Snapshot Isolation (WSI). If you want to see the complete code for all sections of this series, [check it out here](https://github.com/redixhumayun/mini-lsm). If you want to see the complete code for only this post, [check out this commit](https://github.com/redixhumayun/mini-lsm/commit/f88ba7a87e2a1f076153b2b49759b1da4734fa83). I'm going to follow the pattern of the course, so one post for every week of the course. The commits on my repo follow the same pattern, so you should be able to easily tell which commit to checkout.
+
+##  Goals
+
+By the end of the post we will have covered the following 3 goals:
+
+1. Writing to an in-memory buffer
+2. Flushing the in-memory buffer to disk
+3. Running point and range queries on the sources
 
 ##  Introduction
 
-There is the ubiquitous database structure, B+ trees which was in vogue for a very long time. However, more recently, quite a few engines are built based on the log structured approach. If you want an overview of what LSM trees are and how different components work together without diving into too much code, I recommend looking at [this post by Justin Jaffrey](https://buttondown.email/jaffray/archive/the-three-places-for-data-in-an-lsm/) and [this one by Garren Smith](https://garrensmith.com/Databases/Log+Structured+Merge+Tree).
+If you want an overview of what LSM trees are and how different components work together without diving into too much code, I recommend looking at [this post by Justin Jaffrey](https://buttondown.email/jaffray/archive/the-three-places-for-data-in-an-lsm/) and [this one by Garren Smith](https://garrensmith.com/Databases/Log+Structured+Merge+Tree).
 
 Typically, LSM engines have 3 main components:
 
@@ -18,7 +26,7 @@ Typically, LSM engines have 3 main components:
 2. Flushing data to disk (sorted string table)
 3. Combining data from multiple sstables together (compaction)
 
-This post is going to focus on building the in-memory component and flushing the data to disk in the form of a sorted string table (SSTable). I'll focus on the core details of the architecture here. If you're interested in the finer details of implementation, you can refer to the repo.
+We'll cover compaction in a future post.
 
 ![](/assets/img/databases/lsm/lsm_enegine_overview.png)
 
@@ -80,7 +88,7 @@ impl MiniLsm {
 }
 ```
 
-Now, the structs for the locks and the actual state
+Now, let's define the structs for the actual state.
 
 ```rust
 /// Represents the state of the storage engine.
@@ -118,6 +126,10 @@ You'll notice that there are two separate locks here - one for the accessing the
 If you depended on the `write` lock alone, you would acquire it and then be stuck waiting for disk I/O while preventing any writes to the memtable resulting in a latency spike.
 
 There are also a few channels set up for cross thread communication - namely for flushing the frozen memtable and for running a compaction.
+
+| ![lsm-tree.jpg](/assets/img/databases/lsm/lsm_tree_graphic.png) | 
+|:--:| 
+| *Source: https://www.creativcoder.dev/blog/what-is-a-lsm-tree* |
 
 ##  The MemTable
 
@@ -211,23 +223,25 @@ This is great, so far we can write to the memtable. Now, what if you want to rea
 
 ```rust
 /// Get a key from the storage. In day 7, this can be further optimized by using a bloom filter.
-pub fn get(&self, key: &[u8]) -> Result<Option<Bytes>> {
-    //  first probe the memtables
-    let state_guard = self.state.read();
-    let mut memtables = Vec::new();
-    memtables.push(Arc::clone(&state_guard.memtable));
-    memtables.extend(
-        state_guard
-            .imm_memtables
-            .iter()
-            .map(|memtable| Arc::clone(memtable)),
-    );
-    for memtable in memtables {
-        if let Some(value) = memtable.get(key) {
-            if value.is_empty() {
-                return Ok(None);
+impl LsmStorageInner {
+    pub fn get(&self, key: &[u8]) -> Result<Option<Bytes>> {
+        //  first probe the memtables
+        let state_guard = self.state.read();
+        let mut memtables = Vec::new();
+        memtables.push(Arc::clone(&state_guard.memtable));
+        memtables.extend(
+            state_guard
+                .imm_memtables
+                .iter()
+                .map(|memtable| Arc::clone(memtable)),
+        );
+        for memtable in memtables {
+            if let Some(value) = memtable.get(key) {
+                if value.is_empty() {
+                    return Ok(None);
+                }
+                return Ok(Some(value));
             }
-            return Ok(Some(value));
         }
     }
 }
@@ -245,7 +259,7 @@ We will also need to store some metadata for the file so that we can quickly tel
 
 Here's the encoding format we will use. We include a bloom filter with each SST to quickly tell us whether a key does not exist in the SST file. This is a great addition because bloom filters can tell us with a 100% certainty whether something does *not* exist, saving us the I/O of loading any blocks from this file.
 
-*If you want to understand bloom filters better, [there is this great post by Sam Who](https://samwho.dev/bloom-filters/)*
+*If you want to understand bloom filters better, [this is a great post by Sam Who](https://samwho.dev/bloom-filters/)*
 
 ```
 -----------------------------------------------------------------------------------------------------
@@ -276,7 +290,7 @@ And below is what each entry within a block looks like
 -----------------------------------------------------------------------
 ```
 
-Anyway, let's get to the code. First thing is a struct that can help us quickly build individual blocks out.
+Let's represent this in code. First thing is a struct that can help us quickly build individual blocks out. There's a simple encoding scheme in the block which uses key overlap with the first key to compress the size of the data.
 
 ```rust
 use crate::key::{Key, KeySlice, KeyVec};
@@ -511,114 +525,6 @@ impl SsTableBuilder {
 Now, there's a couple of missing pieces regarding the encoding & decoding of the table and the blocks, so let's fill those out. Here's the encoding and decoding for the block.
 
 ```rust
-use crate::key::{Key, KeySlice, KeyVec};
-
-use super::Block;
-
-/// Builds a block.
-pub struct BlockBuilder {
-    /// Offsets of each key-value entries.
-    offsets: Vec<u16>,
-    /// All serialized key-value pairs in the block.
-    data: Vec<u8>,
-    /// The expected block size.
-    block_size: usize,
-    /// The first key in the block
-    first_key: KeyVec,
-}
-
-impl BlockBuilder {
-    /// Creates a new block builder.
-    pub fn new(block_size: usize) -> Self {
-        BlockBuilder {
-            offsets: Vec::new(),
-            data: Vec::new(),
-            block_size,
-            first_key: Key::new(),
-        }
-    }
-
-    /// Adds a key-value pair to the block. Returns false when the block is full.
-    #[must_use]
-    pub fn add(&mut self, key: KeySlice, value: &[u8]) -> bool {
-        //  get the overlap of the key with the first key
-        let key_overlap = key
-            .into_inner()
-            .iter()
-            .zip(self.first_key.as_key_slice().into_inner().iter())
-            .take_while(|(a, b)| a == b)
-            .count() as u16;
-        let key_overlap_bytes = key_overlap.to_le_bytes();
-        let rest_of_key = &(key.into_inner())[key_overlap as usize..];
-        let rest_of_key_len = (rest_of_key.len() as u16).to_le_bytes();
-
-        let value_length = value.len();
-        let value_length_bytes = (value_length as u16).to_le_bytes();
-        let entry_size = 2 + rest_of_key.len() + 2 + value_length + 2;
-
-        if self.data.len() + self.offsets.len() + entry_size > self.block_size
-            && self.first_key.raw_ref().len() > 0
-        {
-            return false;
-        }
-
-        self.offsets.push(self.data.len() as u16);
-
-        self.data.extend_from_slice(&key_overlap_bytes);
-        self.data.extend_from_slice(&rest_of_key_len);
-        self.data.extend_from_slice(rest_of_key);
-        self.data.extend_from_slice(&value_length_bytes);
-        self.data.extend_from_slice(value);
-
-        if self.first_key.raw_ref().len() == 0 {
-            let mut new_key = Key::new();
-            new_key.set_from_slice(key);
-            self.first_key = new_key;
-        }
-        true
-    }
-
-    /// Check if there is no key-value pair in the block.
-    pub fn is_empty(&self) -> bool {
-        self.offsets.is_empty()
-    }
-
-    /// Finalize the block.
-    pub fn build(self) -> Block {
-        Block {
-            data: self.data,
-            offsets: self.offsets,
-        }
-    }
-
-    pub fn size(&self) -> usize {
-        self.offsets.len()
-    }
-}
-```
-
-Finally, the ability to open a table from disk and read a specific block from it.
-
-```rust
-pub(crate) mod bloom;
-mod builder;
-mod iterator;
-
-use std::fs::File;
-use std::path::Path;
-use std::sync::Arc;
-
-use anyhow::Result;
-pub use builder::SsTableBuilder;
-use bytes::Buf;
-pub use iterator::SsTableIterator;
-
-use crate::block::Block;
-use crate::key::{Key, KeyBytes, KeySlice};
-use crate::lsm_storage::BlockCache;
-
-use self::bloom::Bloom;
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BlockMeta {
     /// Offset of this data block.
@@ -675,6 +581,29 @@ impl BlockMeta {
         block_metas
     }
 }
+```
+
+Finally, we need the ability to open a file from disk and decode the bytes. So, let's add that in as well.
+
+```rust
+pub(crate) mod bloom;
+mod builder;
+mod iterator;
+
+use std::fs::File;
+use std::path::Path;
+use std::sync::Arc;
+
+use anyhow::Result;
+pub use builder::SsTableBuilder;
+use bytes::Buf;
+pub use iterator::SsTableIterator;
+
+use crate::block::Block;
+use crate::key::{Key, KeyBytes, KeySlice};
+use crate::lsm_storage::BlockCache;
+
+use self::bloom::Bloom;
 
 /// A file object.
 pub struct FileObject(Option<File>, u64);
@@ -955,9 +884,9 @@ memtable ("a" -> 12, "b" -> Tombstone)
 l0 -> sst1 ("x" -> 9, "y" -> 3, "y" -> 1), sst2 ("x" -> 5, "y" -> 3, "x" -> Tombstone)
 ```
 
-We have two different data sources here and if a user wanted to get all the key-value pairs in storage, we would have to iterate over every source and figure out what the correct value for it is. 
+We have two different data sources here and if a user wanted to get all the key-value pairs in storage, we would have to iterate over every source simultaneously and figure out what the correct value for it is. 
 
-So, first let's define a trait that an iterator over any data source would need to stick to. This makes it easier to define new iterators as and when required.
+So, let's define a trait that an iterator over any data source would need to stick to. This makes it easier to define new iterators as and when required.
 
 ```rust
 
@@ -1603,7 +1532,7 @@ impl<
 }
 ```
 
-Now, this would have actually been enough at this point. However, the course defines two additional types of iterators to make changing things easier, so let's just add those. However, the hierarchy of the iterators is the same as we saw in the above diagram. We added 2 new layers but nothing fundamentally changed.
+Now, this would have actually been enough at this point. However, the course defines two additional types of iterators to make changing things easier, so let's just add those. However, the hierarchy of the iterators is the same as we saw in the above diagram. We will add 2 new layers but nothing fundamentally changed.
 
 ```rust
 use std::{
@@ -1886,5 +1815,15 @@ This was quite a lengthy post and involved a ton of code. If you want to play ar
 You can run commands like 
 
 `fill 1000 3000` -> put values within that range
+
 `get 1001` -> get a specific value
+
 `scan 1001 1005` -> scan a specific range
+
+##  References
+
+1. [The repo](https://github.com/redixhumayun/mini-lsm)
+2. [Three places for data](https://buttondown.email/jaffray/archive/the-three-places-for-data-in-an-lsm/)
+3. [Log structured merge tree](https://garrensmith.com/Databases/Log+Structured+Merge+Tree)
+4. [What is an LSM tree](https://www.creativcoder.dev/blog/what-is-a-lsm-tree)
+5. [Bloom filters](https://samwho.dev/bloom-filters/)
