@@ -4,6 +4,8 @@ title: "Async Runtimes"
 category: async
 ---
 
+*[Here's a link](https://github.com/redixhumayun/async-rust) to the code on a GitHub repo*
+
 I'm trying to understand `async` runtimes better, specifically in Rust. This post is a short attempt to build the most basic example of a future and execute it.
 
 A better and more detailed version of this can be found in [this book](https://rust-lang.github.io/async-book/01_getting_started/01_chapter.html).
@@ -280,3 +282,4 @@ So, there you have it - a very, very simple implementation of a single threaded 
 
 * [Cloudflare Blog On Pin And Unpin](https://blog.cloudflare.com/pin-and-unpin-in-rust)
 * [Asynchronous Programming In Rust](https://rust-lang.github.io/async-book/01_getting_started/01_chapter.html)
+* [GitHub Repo](https://github.com/redixhumayun/async-rust)
