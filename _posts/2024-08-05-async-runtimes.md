@@ -283,3 +283,6 @@ So, there you have it - a very, very simple implementation of a single threaded 
 * [Cloudflare Blog On Pin And Unpin](https://blog.cloudflare.com/pin-and-unpin-in-rust)
 * [Asynchronous Programming In Rust](https://rust-lang.github.io/async-book/01_getting_started/01_chapter.html)
 * [GitHub Repo](https://github.com/redixhumayun/async-rust)
+* [A Guided Tour Of Streams In Rust](https://www.qovery.com/blog/a-guided-tour-of-streams-in-rust/)
+* [Pin And Suffering](https://fasterthanli.me/articles/pin-and-suffering)
+* [Scheduling Internals](https://tontinton.com/posts/scheduling-internals/)
