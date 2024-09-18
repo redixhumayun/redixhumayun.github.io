@@ -59,5 +59,18 @@ a, a:visited, a:hover{
   margin: 1em 0;
   padding: 0.5em 10px;
   color: #333;
-  font-style: italic;
+}
+
+/* Custom styling for code highlight sections */
+div.highlighter-rouge {
+  background-color: transparent; /* Remove background color */
+}
+div.highlighter-rouge .highlight {
+  background-color: transparent;
+}
+div.highlighter-rouge code {
+  background-color: transparent;
+}
+div.highlighter-rougue > div.highlight > pre.highlight {
+  border: 3px solid #ccc;
 }
