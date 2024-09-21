@@ -51,9 +51,19 @@ The `poll` is the most important method because that's where the blocking routin
 The basic idea behind these interfaces is that you can use a single application level thread to monitor all the I/O sources you are interested in **for readiness**.
 
 <div class="aside">
-I used to think io_uring fell under the same category as the above interfaces, but that's not true. epoll and kqueue are specifically used to poll for readiness on file descriptors, but if you're reading from a file, the file is always ready to read.
-
-io_uring on the other hand is actually used to read from files asynchronously.
+I used to think <code>io_uring</code> fell under the same category as the above interfaces, but that's not true. Typically, there are two API styles - readiness based and completion based.
+<br/>
+<br/>
+<code>epoll</code> and <code>kqueue</code> fall under the readiness based model. These syscalls only indicate when a file descriptor is available to be read from or written to. There's the overhead of an additional syscall to actually do the writing or reading in this case.
+<br/>
+<br/>
+<code>io_uring</code> on the other hand falls under the completion based model. This model involves providing the file descriptors you're interested in reading from or writing to and getting the actual results back. It avoids the overhead of the additional syscall.
+<br/>
+<br/>
+One interesting difference is that it makes no sense to use the readiness based model when doing file I/O. It doesn't mean anything to wait for file "readiness" in this case since files are always ready for I/O.
+<br/>
+<br/>
+If you are interested in learning more, check out <a href="https://www.youtube.com/watch?v=Ul8OO4vQMTw">this talk by King Protty</a>
 </div>
 
 The implementation for the `Reactor` is provided below.
@@ -245,7 +255,9 @@ struct EventLoop {
 }
 ```
 
-I'm using the `Box<dyn EventHandler>` to hold a reference to the object backing the file descriptor.(more on that below)
+I'm using the `Box<dyn EventHandler>` to hold a reference to the object backing the file descriptor (more on that below). 
+
+There is the overhead of dynamic dispatch here but we're not trying to build a performant system, so that's okay.
 
 ```rust
 impl EventLoop {
@@ -665,3 +677,4 @@ I intend to continue the series with another post by trying to hook up my future
 4. [Unix Streams](https://en.wikipedia.org/wiki/STREAMS)
 5. [Async Rust By Evan Schwartz](https://emschwartz.me/async-rust-can-be-a-pleasure-to-work-with-without-send-sync-static/)
 6. [Async I/O In Rust Git Repo](https://github.com/nyxtom/async-in-depth-rust-series)
+7. [King Protty's Talk On Zig I/O Concurrency](https://www.youtube.com/watch?v=Ul8OO4vQMTw)
