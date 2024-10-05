@@ -6,43 +6,127 @@ category: async
 
 *[Here's a link](https://github.com/redixhumayun/async-rust/tree/main/src/async_runtime) to the code on GitHub.*
 
-This post is the third in a series about exploring what exactly an async runtime is, and what async io really means. [Here](({% post_url 2024-08-05-async-runtimes %})) is a link to part i where I built a basic future in Rust and polled it to completion with an executor, and [here](({% post_url 2024-09-18-async-runtimes-part-ii %})) is part ii, where I built a simple event loop which uses the `kqueue` async io interface.
+This post is the third in a series about exploring what exactly an async runtime is, and what async I/O really means. [Here](({% post_url 2024-08-05-async-runtimes %})) is a link to part I where I built a basic future in Rust and polled it to completion with an executor, and [here](({% post_url 2024-09-18-async-runtimes-part-ii %})) is part II, where I built a simple event loop which uses the `kqueue` async io interface.
 
-For this post, I'm going to combine learnings from both posts to build a simple, single-threaded async runtime in Rust.
+In this post, I'm going to combine learnings from both posts to build a simple, single-threaded async runtime in ~900 lines of Rust code.
 
-## Motivation
-All of this started with some fundamental [questions](https://x.com/redixhumayun/status/1833172458595054015) I had about what exactly the term "async" means, what fibers, coroutines, green threads etc. really are. I'm happy to share that I have a much more firm understanding of these terms.
+All of this started with some fundamental [questions](https://x.com/redixhumayun/status/1833172458595054015) I had about what exactly the term "async" means, what fibers, coroutines, green threads etc. really are.
 
 ## Async Words
-I want to first explore the terminology used in async because having a shared vocabulary makes it much easier to have better conversations.
+I want to first explore the terminology used in async because having a shared vocabulary makes it much easier to have abstract conversations. While it might just sound like jargon or yak-shaving, being able to clearly differentiate things in designs or conversations is critical because abstractions quickly pile on.
 
 <div class="aside">
 A lot of the terminology shared here was picked up from reading <a href="https://www.packtpub.com/en-mt/product/asynchronous-programming-in-rust-9781805128137?srsltid=AfmBOop9MYJcpPaHbb-oI6EeQnTRr6GMu4GkcZF-fY8RtlSW5Z9igEJ2">Asynchronous Programming in Rust</a> by <a href="https://x.com/cf_samson">Carl Fredrik Samson</a>. The reason for this disclaimer is the same as in the book: this area is rife with overloaded terminology.
 <br/>
-You are quite likely to come across different definitions for the same term. For instance, <a href="https://tokio.rs/tokio/tutorial/spawning">Tokio docs</a> call their tasks green threads but I think that's inaccurate.
+You are quite likely to come across different definitions for the same term. For instance, <a href="https://tokio.rs/tokio/tutorial/spawning">Tokio docs</a> call their tasks green threads but that seems inaccurate.
 <br/>
 <br/>
 </div>
 
 ![](/assets/img/async/async_terms.png)
+<figcaption style="text-align: center;">The State Of Async<a href="https://www.qovery.com/blog/a-guided-tour-of-streams-in-rust/"></a></figcaption>
 
-The image above gives a high-level overview of the state of async terminology. There are two classes of courtines - stackful & stackless.
 
-Stackful coroutines are usually referred to by other names such as fibers or green threads. Stackless coroutines are just state machines under the hood. Both styles of coroutines are sometimes referred to as using the M:N threading model, where M user-space threads or tasks are multiplexed onto N threads of the underlying host system ([thanks to King Protty for pointing this out on Twitter](https://x.com/kingprotty/status/1840413114187006198)).
+The image above gives a high-level overview of the state of async terminology. The broadest classifier of things are coroutines, of which there are two - stackful & stackless.
 
-Now, there are broadly two classes of schedulers(sometimes referred to as executors):
-* pre-emptive
-* co-operative 
+Stackful coroutines are usually referred to by other names such as fibers or green threads. Stackless coroutines are just state machines under the hood, and they are sometimes called tasks. Both styles of coroutines are sometimes referred to as using the M:N threading model, where M user-space threads or tasks are multiplexed onto N threads of the underlying host system ([thanks to King Protty for pointing this out on Twitter](https://x.com/kingprotty/status/1840413114187006198)).
 
-Pre-emptive schedulers mean that the scheduler is capable of making a coroutine pause at any point during it's execution. Co-operative schedulers mean that the scheduler is incapable of making a coroutine pause at any point during it's execution, the coroutine is responsible for pausing at certain points so that it doesn't block the executor.
+The primary difference between the two types of coroutines is in the name - stackful have call stacks allocated (similar to OS thread stacks, although smaller), stackless have no call stacks allocated to them.
+
+Now, there are broadly two classes of schedulers(sometimes referred to as executors or runtimes):
+* Pre-emptive
+* Co-operative 
+
+Pre-emptive schedulers mean that the scheduler is capable of making a coroutine pause at any point during it's execution. Co-operative schedulers mean that the scheduler is incapable of making a coroutine pause at any point during it's execution, the coroutine is responsible for pausing at certain points so that it doesn't block the scheduler.
 
 With stackful coroutines, it is possible to have either a pre-emptive or co-operative scheduler (this is more of a spectrum, not binary). But, with stackless coroutines, you can only ever have a co-operative scheduler. The reason is that stackless coroutines compile down to state machines which don't have a call stack allocated to them that stores execution information, so you can't pause them at any point. Stackful coroutines on the other hand do have a call stack allocated to them which stores execution information. This allows the scheduler to stop & resume them at any point.
 
-<div class="aside">A little bit of computing history for those of you interested in it. The first generations of the MacOS had a cooperative scheduler, which could cause a poorly built application to take out down the entire OS <br/><a href="https://pages.cs.wisc.edu/~remzi/OSTEP/intro.pdf">[From the OSTEP book]</a><br/></div>
+<div class="aside">A little bit of computing history for those of you interested in it. The first generations of the MacOS(v9 and earlier) had a cooperative scheduler, which could cause a poorly built application to take down the entire OS <br/><a href="https://pages.cs.wisc.edu/~remzi/OSTEP/intro.pdf">[From the OSTEP book]</a><br/></div>
 
-We'll dig deeper into stackless coroutines and co-operative schedulers in this post, but if you're interested in learning more about stackful coroutines, I highly recommend [chapter 4 of Asynchronous Programming in Rust](https://www.packtpub.com/en-mt/product/asynchronous-programming-in-rust-9781805128137?srsltid=AfmBOor2hL_PXSAhdb5l5M2261s4zynuJnSLCMkP733MOmdJ8Y6-g8Lc).
+We'll dig deeper into stackless coroutines and co-operative schedulers in this post, but if you're interested in learning more about stackful coroutines, I highly recommend chapter 4 of [Asynchronous Programming in Rust](https://www.packtpub.com/en-mt/product/asynchronous-programming-in-rust-9781805128137?srsltid=AfmBOor2hL_PXSAhdb5l5M2261s4zynuJnSLCMkP733MOmdJ8Y6-g8Lc).
 
-Let's start digging deeper into stackless coroutines and building an async runtime around them.
+Stackful & stackless coroutines have a famous allegory associated with them thanks to Bob Nystrom's [What Colour Is Your Function](https://journal.stuffwithstuff.com/2015/02/01/what-color-is-your-function/) blog post from back in 2015. In the post, he presents the case for why he thinks stackless coroutines are the wrong abstraction to represent concurrency in a language.
+
+Let's look at some examples - consider the Go code below
+
+```go
+package main
+
+import "fmt"
+
+func f(n int) {
+  for i := 0; i < 10; i++ {
+    fmt.Println(n, ":", i)
+  }
+}
+
+func main() {
+  go f(0)
+  var input string
+  fmt.Scanln(&input)
+}
+```
+
+It kicks off a goroutine in the background and waits for some input from the user. Notice that you don't have to do anything explicit in terms of making this asynchronous apart from using the `go` keyword. The functions have no "colour".
+
+Now, here is the equivalent JavaScript code (I'm using JS here because it's syntactically easier to parse than Rust). Now, you use the `async` keyword to denote that some function can run in the background and it needs to have `await` called against it.
+
+```javascript
+const readline = require('readline').promises;
+
+async function f(n) {
+    for (let i = 0; i < 10; i++) {
+        console.log(n, ":", i);
+        // Simulate some asynchronous work
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+}
+
+async function main() {
+    // Create a promise that resolves when f(0) completes
+    const task = f(0);
+
+    // Set up readline interface
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+    });
+
+    // Wait for user input
+    await rl.question('Press Enter to exit...');
+
+    // Close the readline interface
+    rl.close();
+
+    // Ensure f(0) has completed
+    await task;
+}
+
+(async () => {
+    try {
+        await main();
+    } catch (error) {
+        console.error(error);
+    }
+})();
+```
+
+The biggest downside is that you also need to denote your `main` function as `async` now because you can never call an `async` function from a regular function. This is where your code gets "coloured". This might not seem like a big deal but consider a situation where you are trying to do simple iteration in your code but need to call an `async` function there now. Now, your iteration code also requires `async` against it even if it doesn't actually do any I/O waiting. It becomes hard to differentiate which parts of your code are actually doing I/O operations, which voids doing function colouring to begin with. Eventually, your code just ends up becoming the colour of `async`.
+
+In the JS code, you'll also notice `await`, which you can think of as the points at which this coroutine is yielding back to the scheduler. It's not too dissimilar from the `yield` keyword used in a generator, and generators themselves are not dissimilar from async functions. This is why `async/await` is considered co-operative - the scheduler has no way of stopping a future/promise in the midst of it's execution because there is nowhere to save it's execution information so it can resume later.
+In the equivalent Go code, there was no `yield` or `await` keyword - the language's compiler allows each thread that is spun up to execute for some fixed amount of time before stopping it, which as of [Go `1.19.1` is `10ms`](https://github.com/golang/go/blob/go1.19.1/src/runtime/proc.go#L5279-L5281)([source](https://stackoverflow.com/questions/73915144/why-is-go-considered-partially-preemptive)).
+
+Because of these details, there is a lot more implicit "magic" happening with Go's runtime but it's probably safer because it's harder to shoot yourself in the foot. Conversely with the `async/await` situation, things are more explicit, but one poorly misplaced synchronous operation between two `await` operations could block your runtime. Rust uses `async/await` but doesn't bundle a runtime with the language and depends on the ecosystem to provide a runtime. This choice providers users more power since they can choose a runtime based on the workload but adds a lot of mental overhead (a recurring theme with Rust).
+
+In a language without "coloured" functions, since each coroutine is allocated a stack to keep track of it's execution status, there is more overhead which isn't present for stackless coroutines. Therefore, you should be able to spin up a greater number of stackless coroutines thus providing greater concurrency (this statement is caveated by implementation details of the application itlsef, though. Just because you can spin up more coroutines does not necessarily mean you are actually providing more concurrency and therefore greater throughput).
+
+*There is a certain irony to the terminology here - runtimes without "coloured" functions spin up "green" threads, whereas runtimes with "coloured" functions have no colour to their tasks.*
+
+<div class="aside">
+Interestingly enough, Rust pre-1.0 actually <a href="https://github.com/rust-lang/rfcs/blob/master/text/0230-remove-runtime.md">had stackful coroutines</a> as part of it's runtime but decided to remove them because of binary size overhead and to not diverge the threading API. Zig, on the other hand, has <code>async/await</code> but without <a href="https://kristoff.it/blog/zig-colorblind-async-await/">function colouring</a>.
+</div>
+
+Now that we've explored the differences between stackful & stackless coroutines, let's get down to building a simple runtime for stackless coroutines.
 
 ## State Machines
 The most important thing to understand when it comes to stackless coroutines is that they are typically compiled down to state machines which are then "run" to completion.
@@ -61,23 +145,37 @@ If you click the view MIR option in the playground, you'll see the code generate
 
 The "run" to completion bit is important above because these state machines are lazy - they need to actually be run, sometimes repeatedly. This is the job of the executor/scheduler.
 
-## Rust Futures And Async/Await
-Rust futures are also just state machines under the hood, and they use `async/await` syntax, with the `await` keyword denoting the points at which the future will yield back to the runtime.
-
-Consider the following piece of code
+Taking a more complete example involving Rust futures, consider the code below
 
 ```rust
-async fn do_some_things() -> std::io::Result<u64> {
-  let result_1 = do_something_1().await?;
-  let result_2 = do_something_2()?;
-  let result_3 = do_something_3().await?;
-  result_1 + result_2 + result_3;
+async fn example() {
+    let a = async_fn_1().await;
+    let r = sync_fn();
+    let b = async_fn_2().await;
 }
 ```
 
-The async function above itself calls three other functions - 2 of which are themselves asynchronous functions and one of which is not. The points at which `.await` is called is where the function above yields back to the scheduler, informing the scheduler that this is a future which needs to be run to completion.
+which will compile down to something resembling the following
 
-One of the most important things to keep in mind when it comes to async performance is that `do_something_2()` is blocking this future and therefore the scheduler itself. This is the major downside of co-operative schedulers, one poorly programmed future can block a scheduler (or a scheduler thread). Consider doing some long running computation in `do_something_2()`, there is no opportunity to offload work here because you're not really waiting for anything to happen.
+```rust
+enum ExampleState {
+    Start,
+    AwaitingFutureA,
+    AwaitingFutureB,
+    Done
+}
+
+struct Example {
+    state: ExampleState,
+    output: Option<()>,
+}
+
+impl Future for Example {
+    //  the logic to move the state machine through it's various states
+}
+```
+
+Rememeber that Rust futures are stackless coroutines that cannot be pre-empted by the scheduler. If your `sync_fn()` above takes too long, you are actually blocking this task and the thread of the executor this task is running on.
 
 ## Building A Runtime
 Let's start writing some code to build a basic single-threaded runtime. Here are the major components we are going to be building:
@@ -118,7 +216,7 @@ impl std::fmt::Debug for Task {
 }
 ```
 
-If you're interested in understanding the `Pin<Box<T>>` verbosity, checkout [fasterthanlime's post](https://fasterthanli.me/articles/pin-and-suffering). Put very simply, it's to ensure that the memory region where the future is stored is not moved.
+If you're interested in understanding the `Pin<Box<T>>` verbosity, checkout [fasterthanlime's post](https://fasterthanli.me/articles/pin-and-suffering). Put very simply, it's to ensure that the future is not moved from the memory region it's stored in.
 
 ### Waker
 The waker is probably the component with the most complicated code, mostly because I chose to implement it in unsafe Rust. If you're following along and trying to build this on your own, you can always use the [simpler `ArcWake` implementation](https://docs.rs/futures/latest/futures/task/trait.ArcWake.html). I chose not to do that mainly because I never intended to make this runtime multi-threaded and I like the masochism of unsafe Rust.
@@ -219,24 +317,9 @@ impl TaskQueue {
 ```
 
 ### Reactor
-I already covered reactors in detail in [part ii](({% post_url 2024-09-18-async-runtimes-part-ii %})), so refer to that if you want a refresher. The big update to this component is that I now store the `wakers` that are built for each task, so that the task can be enqueued when the reactor receives an event.
+I already covered reactors in detail in [part ii](({% post_url 2024-09-18-async-runtimes-part-ii %})), so refer to that if you want more detail. The big update to this component is that I now store the `wakers` that are built for each task, so that the task can be enqueued when the reactor receives an event.
 
 ```rust
-#![allow(dead_code)]
-use std::{
-    collections::HashMap,
-    ffi::c_void,
-    io::{Read, Write},
-    os::{
-        fd::{AsRawFd, RawFd},
-        unix::net::UnixStream,
-    },
-    task::{Context, Waker},
-};
-
-use libc::{kevent, EVFILT_READ, EVFILT_WRITE, EV_ADD, EV_DELETE, EV_ONESHOT};
-use log::{debug, error, info};
-
 #[derive(Debug)]
 pub struct Event {
     pub fd: usize,
@@ -534,13 +617,26 @@ impl Reactor {
     }
 }
 ```
+The code above creates a `kqueue` file descriptor and then starts listening for events in one-shot mode on specific file descriptors. `kqueue` is only available on OSX & BSD distributions, the equivalent for Linux would be `epoll` but they provide a similar API.
+
+The code also uses a Unix pipe hack to unblock the scheduler (I'll show that below) since I just block the scheduler while listening for events from `kqueue`. I imagine that a production grade scheduler would typically provide a timeout. 
 
 Pay attention to the `register_interest` and `get_interest` methods here that update the `readable` & `writable` hash maps, this is where the `wakers` are stored.
+
+<div class="aside">
+I already mentioned this in part II but it bears repeating because I think it's crucial.
+There are two style of async IO interfaces provided by the OS - readiness based & completion based. 
+<br/><br/>
+<code>epoll</code> and <code>kqueue</code> fall under the readiness based model. These syscalls only indicate when a file descriptor is available to be read from or written to. There's the overhead of an additional syscall to actually do the writing or reading in this case. Because this API only determines readiness, it is mostly suitable for doing network operations - files are always considered "ready" to read from so there is no sense in wasting cycles polling their file descriptors.
+<br/>
+<br/>
+<code>io_uring</code> on the other hand falls under the completion based model. This model involves providing the file descriptors you're interested in reading from or writing to along with a buffer into which the results can be written. It avoids the overhead of the additional syscall and also <a href="https://github.com/ziglang/zig/issues/8224#issuecomment-848587146">provides a unifying interface</a> for both network & file IO operations. If you're interested, check out Jens Axboe's work on <a href="https://github.com/axboe/liburing">liburing</a>
+</div>
 
 ### Sync Thread Pool
 I mentioned earlier that we typically don't want to block within our `async` code, but sometimes you need to perform a blocking operation, like reading from a file when `io_uring` isn't available.
 
-In these situationsm, it's helpful to have a separate thread pool which can be used to run these blocking tasks in a non-blocking manner. This frees up the executor to run other tasks and check with this task periodically.
+In these situations, it's helpful to have a separate thread pool which can be used to run these blocking tasks in a non-blocking manner. This frees up the executor to run other tasks and check with this task periodically.
 
 ```rust
 use super::reactor::Reactor;
@@ -759,11 +855,11 @@ impl Executor {
 }
 ```
 
-It also has two public API methods - `block_on` and `spawn`. These are the equivalent of the [Tokio](https://docs.rs/tokio/latest/tokio/) methods and do roughly the same thing. `block_on` is used for the top level future and blocks the main thread waiting for this future to complete, and `spawn` is used for nested futures.
+It has two public API methods - `block_on` and `spawn`. These are the equivalent of the [Tokio](https://docs.rs/tokio/latest/tokio/) methods and do roughly the same thing. `block_on` is used for the top level future and blocks the main thread waiting for this future to complete, and `spawn` is used for nested futures.
 
 You'll notice that all my futures have an output of the unit type and have a `static` lifetime. The former is done to simplify the code since this runtime is only going to service a web server, which typically write their results back via the TCP stream.
 
-I did the latter because it was the easiest way to set up everything without having to worry about lifetimes. If you're interested in a way that futures can be built without any lifetime at all, read [this great post](https://emschwartz.me/async-rust-can-be-a-pleasure-to-work-with-without-send-sync-static/) by Evan Schwartz.
+I did the latter because it was the easiest way to set up everything without having to worry about lifetimes. If you're interested in a way that futures can be built without any lifetimes at all, read [this great post](https://emschwartz.me/async-rust-can-be-a-pleasure-to-work-with-without-send-sync-static/) by Evan Schwartz.
 
 And with that, we're done with the main internal components of our system.
 
@@ -776,8 +872,9 @@ We're going to be building a basic web server on top of this, so let's buid a si
 Here's the code for the listener. Notice that it registers interest with the reactor upon recognizing that there are no clients attempting to connect right now. Also, notice the `drop` functionality where it unregisters itself from the reactor.
 
 The `listener.set_nonblocking(true)` is important here because otherwise the `connect` function call will block on the async task, rendering the entire runtime pointless.
+When the listener notices that there are no clients trying to connect, it registers interest with the reactor and unblocks the scheduler.
 
-```
+```rust
 pub struct TcpListener {
     listener: std::net::TcpListener,
     reactor: Rc<RefCell<Reactor>>,
@@ -1067,4 +1164,23 @@ fn setup_ctrlc_handler(shutdown_tx: std::sync::mpsc::Sender<()>) {
 }
 ```
 
-There's some additional functionality around shutting down the entire runtime by listening for a `SIGINT`, but the meat of the code is in `block_on` function. The `connect` loop listens for connections, and upon receiving one immediately spawns a separate task for the client.
+There's some additional functionality around shutting down the entire runtime by listening for a `SIGINT`, but the meat of the code is in the `block_on` function. The `connect` loop listens for connections, and upon receiving one immediately spawns a separate task for the client.
+
+## Conclusion
+So, there we have it - a single-threaded async runtime which shows how to use async IO to wait on events and poll tasks via a scheduler in ~900 lines of Rust code. Building this prototype was a great way for me to intuit the core ideas behind an async runtime for myself.
+
+Of course, there's a lot we skipped over here for the sake of simplicity:
+* most production schedulers are multi-threaded with tasks being multiplexed across these threads (for our example, we'd end up having to use `Arc` instead of `Rc`)
+* timers in an async runtime & cancellable tasks
+* work stealing across threads, [something Tokio famously does](https://tokio.rs/blog/2019-10-scheduler)
+* [thread-per-core model with tasks pinned to specific threads](https://without.boats/blog/thread-per-core/)
+
+I hope this post gives you a better idea of what's going on under the hood of an async runtime.
+
+## References
+1. [Async I/O in Depth video series](https://www.youtube.com/watch?v=yfcJGEISsLc&list=PLb1VOxJqFzDd05_aDQEm6KVblhee_KStX&index=5)
+2. [Async Rust Without Send, Sync Or Static](https://emschwartz.me/async-rust-can-be-a-pleasure-to-work-with-without-send-sync-static/)
+3. [Zig Proposal For Event Loop](https://github.com/ziglang/zig/issues/8224)
+4. [Go Time Slice For Goroutines](https://github.com/golang/go/blob/go1.19.1/src/runtime/proc.go#L5279-L5281)
+5. [Async Rust Book](https://rust-lang.github.io/async-book/01_getting_started/01_chapter.html)
+6. [OSTEP](https://pages.cs.wisc.edu/~remzi/OSTEP/)
