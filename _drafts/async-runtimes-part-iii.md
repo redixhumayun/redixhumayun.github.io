@@ -1166,6 +1166,12 @@ fn setup_ctrlc_handler(shutdown_tx: std::sync::mpsc::Sender<()>) {
 
 There's some additional functionality around shutting down the entire runtime by listening for a `SIGINT`, but the meat of the code is in the `block_on` function. The `connect` loop listens for connections, and upon receiving one immediately spawns a separate task for the client.
 
+That was a lot of code, so let me leave you with another diagram illustrating what we've built. It's very similar to the diagram I shared earlier with some more detail attached.
+
+![](/assets/img/async/async_runtime.png)
+
+It looks a lot more complicated but it's just showing more of the detail in the system, the core components remain the same. 
+
 ## Conclusion
 So, there we have it - a single-threaded async runtime which shows how to use async IO to wait on events and poll tasks via a scheduler in ~900 lines of Rust code. Building this prototype was a great way for me to intuit the core ideas behind an async runtime for myself.
 
@@ -1180,7 +1186,4 @@ I hope this post gives you a better idea of what's going on under the hood of an
 ## References
 1. [Async I/O in Depth video series](https://www.youtube.com/watch?v=yfcJGEISsLc&list=PLb1VOxJqFzDd05_aDQEm6KVblhee_KStX&index=5)
 2. [Async Rust Without Send, Sync Or Static](https://emschwartz.me/async-rust-can-be-a-pleasure-to-work-with-without-send-sync-static/)
-3. [Zig Proposal For Event Loop](https://github.com/ziglang/zig/issues/8224)
-4. [Go Time Slice For Goroutines](https://github.com/golang/go/blob/go1.19.1/src/runtime/proc.go#L5279-L5281)
-5. [Async Rust Book](https://rust-lang.github.io/async-book/01_getting_started/01_chapter.html)
-6. [OSTEP](https://pages.cs.wisc.edu/~remzi/OSTEP/)
+3. [Asynchronous Programming In Rust](https://github.com/PacktPublishing/Asynchronous-Programming-in-Rust)
