@@ -6,7 +6,7 @@ category: async
 
 *[Here's a link](https://github.com/redixhumayun/async-rust/tree/main/src/async_runtime) to the code on GitHub.*
 
-This post is the third in a series about exploring what exactly an async runtime is, and what async I/O really means. [Here](({% post_url 2024-08-05-async-runtimes %})) is a link to part I where I built a basic future in Rust and polled it to completion with an executor, and [here](({% post_url 2024-09-18-async-runtimes-part-ii %})) is part II, where I built a simple event loop which uses the `kqueue` async io interface.
+This post is the third in a series about exploring what exactly an async runtime is, and what async I/O really means. [Here]({% post_url 2024-08-05-async-runtimes %}) is a link to part I where I built a basic future in Rust and polled it to completion with an executor, and [here]({% post_url 2024-09-18-async-runtimes-part-ii %}) is part II, where I built a simple event loop which uses the `kqueue` async io interface.
 
 In this post, I'm going to combine learnings from both posts to build a simple, single-threaded async runtime in ~900 lines of Rust code.
 
@@ -18,9 +18,11 @@ I want to first explore the terminology used in async because having a shared vo
 <div class="aside">
 A lot of the terminology shared here was picked up from reading <a href="https://www.packtpub.com/en-mt/product/asynchronous-programming-in-rust-9781805128137?srsltid=AfmBOop9MYJcpPaHbb-oI6EeQnTRr6GMu4GkcZF-fY8RtlSW5Z9igEJ2">Asynchronous Programming in Rust</a> by <a href="https://x.com/cf_samson">Carl Fredrik Samson</a>. The reason for this disclaimer is the same as in the book: this area is rife with overloaded terminology.
 <br/>
-You are quite likely to come across different definitions for the same term. For instance, <a href="https://tokio.rs/tokio/tutorial/spawning">Tokio docs</a> call their tasks green threads but that seems inaccurate.
+<br/>
+You are quite likely to come across different definitions for the same term. For instance, <a href="https://tokio.rs/tokio/tutorial/spawning">Tokio docs</a> call their tasks green threads but depending on what definition you go with <a href="https://x.com/cf_samson/status/1840511714724348174">that is not entirely accurate</a>.
 <br/>
 <br/>
+In this post, we'll use the definition of green threads that specifically means stackful coroutines.
 </div>
 
 ![](/assets/img/async/async_terms.png)
@@ -31,7 +33,7 @@ The image above gives a high-level overview of the state of async terminology. T
 
 Stackful coroutines are usually referred to by other names such as fibers or green threads. Stackless coroutines are just state machines under the hood, and they are sometimes called tasks. Both styles of coroutines are sometimes referred to as using the M:N threading model, where M user-space threads or tasks are multiplexed onto N threads of the underlying host system ([thanks to King Protty for pointing this out on Twitter](https://x.com/kingprotty/status/1840413114187006198)).
 
-The primary difference between the two types of coroutines is in the name - stackful have call stacks allocated (similar to OS thread stacks, although smaller), stackless have no call stacks allocated to them.
+The primary difference between the two types of coroutines is in the name - stackful have call stacks allocated (similar to OS thread stacks), stackless have no call stacks allocated to them.
 
 Now, there are broadly two classes of schedulers(sometimes referred to as executors or runtimes):
 * Pre-emptive
@@ -113,7 +115,9 @@ async function main() {
 
 The biggest downside is that you also need to denote your `main` function as `async` now because you can never call an `async` function from a regular function. This is where your code gets "coloured". This might not seem like a big deal but consider a situation where you are trying to do simple iteration in your code but need to call an `async` function there now. Now, your iteration code also requires `async` against it even if it doesn't actually do any I/O waiting. It becomes hard to differentiate which parts of your code are actually doing I/O operations, which voids doing function colouring to begin with. Eventually, your code just ends up becoming the colour of `async`.
 
-In the JS code, you'll also notice `await`, which you can think of as the points at which this coroutine is yielding back to the scheduler. It's not too dissimilar from the `yield` keyword used in a generator, and generators themselves are not dissimilar from async functions. This is why `async/await` is considered co-operative - the scheduler has no way of stopping a future/promise in the midst of it's execution because there is nowhere to save it's execution information so it can resume later.
+In the JS code, you'll also notice `await`, which you can think of as the points at which this coroutine is yielding back to the scheduler (it's similar to the `yield` keyword used in generators, and generators are similar to async functions). 
+
+This is why `async/await` is considered co-operative - the scheduler has no way of stopping a future/promise in the midst of it's execution because there is nowhere to save it's execution information so it can resume later.
 In the equivalent Go code, there was no `yield` or `await` keyword - the language's compiler allows each thread that is spun up to execute for some fixed amount of time before stopping it, which as of [Go `1.19.1` is `10ms`](https://github.com/golang/go/blob/go1.19.1/src/runtime/proc.go#L5279-L5281)([source](https://stackoverflow.com/questions/73915144/why-is-go-considered-partially-preemptive)).
 
 Because of these details, there is a lot more implicit "magic" happening with Go's runtime but it's probably safer because it's harder to shoot yourself in the foot. Conversely with the `async/await` situation, things are more explicit, but one poorly misplaced synchronous operation between two `await` operations could block your runtime. Rust uses `async/await` but doesn't bundle a runtime with the language and depends on the ecosystem to provide a runtime. This choice providers users more power since they can choose a runtime based on the workload but adds a lot of mental overhead (a recurring theme with Rust).
@@ -223,7 +227,7 @@ The waker is probably the component with the most complicated code, mostly becau
 
 Before I jump into the code for the waker, I need to explain a fat pointer. A pointer is typically one word size since it only holds a memory address. However, a fat pointer is more than one word size since it holds a memory address and some additional data (in this case, a `vtable`).
 
-*Note: If you want to look at a better implementation of this, look at the [std lib's implementation](https://github.com/rust-lang/futures-rs/blob/master/futures-task/src/waker.rs#L31)*
+*Note: If you want to look at a better implementation of the code below, look at the [std lib's implementation](https://github.com/rust-lang/futures-rs/blob/master/futures-task/src/waker.rs#L31)*
 
 Here's the code for the waker, and I'll walk through it after
 
@@ -1114,7 +1118,7 @@ Notice that because we have a threadpool via which to read files, all of the 3 t
 ## Wiring It All Up
 Now, that we have all the different components, we need to wire everything up together.
 
-Here's the main function where we'll build the top-level future and then pass it along to the executor.
+Here's the main function where we'll build the top-level future and then pass it along to the executor. It's quite ugly because of the excessive `Rc` syntax, but that's just Rust I suppose.
 
 ```rust
 use std::{cell::RefCell, rc::Rc};
@@ -1170,7 +1174,7 @@ That was a lot of code, so let me leave you with another diagram illustrating wh
 
 ![](/assets/img/async/async_runtime.png)
 
-It looks a lot more complicated but it's just showing more of the detail in the system, the core components remain the same. 
+It looks a lot more complicated but it's just showing more of the detail in the system, the core components remain the same. I'm showing multiple cores being utilized in the diagram, whereas we just utilized one core.
 
 ## Conclusion
 So, there we have it - a single-threaded async runtime which shows how to use async IO to wait on events and poll tasks via a scheduler in ~900 lines of Rust code. Building this prototype was a great way for me to intuit the core ideas behind an async runtime for myself.

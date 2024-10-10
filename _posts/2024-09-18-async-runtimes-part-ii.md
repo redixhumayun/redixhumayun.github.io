@@ -8,7 +8,7 @@ category: async
 
 This post is a follow up to a [previous post]({% post_url 2024-08-05-async-runtimes %}), where I built a basic custom `Future` and hooked that up to an `Executor` and polled the future to completion.
 
-This time I'm going to build a single-threaded event loop that uses async I/O interfaces.
+This time I'm going to build a single-threaded event loop that uses async I/O interfaces in ~500 lines of Rust code.
 
 ##  Reactors
 Async runtimes have an important component called `reactors`. These components sit on top of the OS and listen for events from the underlying file descriptors. This is what allows an application to offload a lot of the work. 
