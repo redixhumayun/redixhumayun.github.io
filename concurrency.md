@@ -237,11 +237,11 @@ Broadly:
 7. [The Danger Of Atomic Operations](https://abseil.io/docs/cpp/atomic_danger)
 
 ### Sync & Async Web Servers
-1. https://tenthousandmeters.com/blog/python-behind-the-scenes-12-how-asyncawait-works-in-python/
-2. https://eli.thegreenplace.net/2017/concurrent-servers-part-1-introduction/ 
-3. https://doc.rust-lang.org/book/ch20-00-final-project-a-web-server.html
-4. https://rust-lang.github.io/async-book/09_example/00_intro.html
-5. https://ibraheem.ca/posts/too-many-web-servers/
+1. [How Async Await Works In Python](https://tenthousandmeters.com/blog/python-behind-the-scenes-12-how-asyncawait-works-in-python/)
+2. [Concurrent Servers Part I](https://eli.thegreenplace.net/2017/concurrent-servers-part-1-introduction/ )
+3. [Rust Book Final Project - Web Server](https://doc.rust-lang.org/book/ch20-00-final-project-a-web-server.html)
+4. [Async Rust Book Final Project](https://rust-lang.github.io/async-book/09_example/00_intro.html)
+5. [Too Many Web Servers](https://ibraheem.ca/posts/too-many-web-servers/)
 
 ### Aysnc Runtimes
 
