@@ -6,7 +6,7 @@ category: profiling
 
 *[Here's a link](https://github.com/redixhumayun/hashmap-rs) to the code on GitHub*
 
-I've been trying to understand profiling and performance tooling better, and there didn't seem to be a better way than to try to write a cache performant hash map.
+I've been trying to understand profiling and performance tooling better, and there didn't seem to be a better way than to try to write a cache aware hash map.
 
 The hard part here is getting familiar with the tooling and semantics of tools on different platforms (hint: avoid OSX)
 
@@ -84,7 +84,7 @@ The open addressing hash map, instead, tries to find the next empty slot in the 
 * [double hashing](https://en.wikipedia.org/wiki/Double_hashing)
 
 We'll use linear probing in this example to keep things simple.
-The important thing to note is that with open addressing we expect better cache performance, and therefore better overall performance.
+The important thing to note is that with open addressing we expect better cache performance, and therefore better overall performance. If you want a detailed explanation of this, look at this [SO answer](https://stackoverflow.com/questions/49709873/cache-performance-in-hash-tables-with-chaining-vs-open-addressing). The tl;dr is that following the pointers in a linked list leads to cache trashing since the nodes are not "clustered" together in memory.
 
 ![](/assets/img/cache-profiling/linear-probing.png)
 
@@ -112,7 +112,7 @@ CPU caches come in 3 flavours - L1, L2 and a shared L3 cache. L3 connects out to
 
 ![](/assets/img/cache-profiling/cache.svg)
 
-A CPU will first check it's L1 cache for some data. Upon failing to find it in L1, it will search L2, then L3 and eventually RAM.
+A CPU will first check its L1 cache for some data. Upon failing to find it in L1, it will search L2, then L3 and eventually RAM.
 
 We want the CPU to stay as far up this hierarchy as possible because each cache miss means an extra fetch which wastes cycles.
 
