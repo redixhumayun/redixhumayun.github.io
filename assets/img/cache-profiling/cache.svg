@@ -1,0 +1,76 @@
+<svg viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg">
+    <!-- Title -->
+    <text x="400" y="30" text-anchor="middle" font-size="24" font-weight="bold">CPU Cache Hierarchy</text>
+    
+    <!-- CPU Cores -->
+    <g transform="translate(200, 80)">
+        <!-- Core 0 -->
+        <rect x="0" y="0" width="80" height="60" fill="#ff9999" stroke="black" rx="5"/>
+        <text x="40" y="35" text-anchor="middle" font-size="14">Core 0</text>
+        
+        <!-- Core 1 -->
+        <rect x="320" y="0" width="80" height="60" fill="#ff9999" stroke="black" rx="5"/>
+        <text x="360" y="35" text-anchor="middle" font-size="14">Core 1</text>
+        
+        <!-- L1 Cache for Core 0 -->
+        <rect x="0" y="80" width="80" height="40" fill="#b3d9ff" stroke="black"/>
+        <text x="40" y="105" text-anchor="middle" font-size="14">L1</text>
+        <text x="40" y="135" text-anchor="middle" font-size="12">32KB</text>
+        
+        <!-- L1 Cache for Core 1 -->
+        <rect x="320" y="80" width="80" height="40" fill="#b3d9ff" stroke="black"/>
+        <text x="360" y="105" text-anchor="middle" font-size="14">L1</text>
+        <text x="360" y="135" text-anchor="middle" font-size="12">32KB</text>
+        
+        <!-- L2 Cache for Core 0 -->
+        <rect x="0" y="160" width="80" height="60" fill="#99ff99" stroke="black"/>
+        <text x="40" y="190" text-anchor="middle" font-size="14">L2</text>
+        <text x="40" y="235" text-anchor="middle" font-size="12">256KB</text>
+        
+        <!-- L2 Cache for Core 1 -->
+        <rect x="320" y="160" width="80" height="60" fill="#99ff99" stroke="black"/>
+        <text x="360" y="190" text-anchor="middle" font-size="14">L2</text>
+        <text x="360" y="235" text-anchor="middle" font-size="12">256KB</text>
+    </g>
+    
+    <!-- Shared L3 Cache -->
+    <rect x="150" y="350" width="500" height="80" fill="#ffcc99" stroke="black"/>
+    <text x="400" y="395" text-anchor="middle" font-size="16">L3 (Shared)</text>
+    <text x="400" y="445" text-anchor="middle" font-size="14">8MB</text>
+    
+    <!-- Main Memory -->
+    <rect x="150" y="500" width="500" height="60" fill="#e6e6e6" stroke="black"/>
+    <text x="400" y="535" text-anchor="middle" font-size="16">Main Memory (RAM)</text>
+    
+    <!-- Connecting lines -->
+    <!-- Core 0 to L1 -->
+    <path d="M 240,140 L 240,160" stroke="black" stroke-width="2"/>
+    <!-- Core 1 to L1 -->
+    <path d="M 560,140 L 560,160" stroke="black" stroke-width="2"/>
+    <!-- L1 to L2 Core 0 -->
+    <path d="M 240,220 L 240,240" stroke="black" stroke-width="2"/>
+    <!-- L1 to L2 Core 1 -->
+    <path d="M 560,220 L 560,240" stroke="black" stroke-width="2"/>
+    <!-- L2 to L3 -->
+    <path d="M 240,300 L 240,350" stroke="black" stroke-width="2"/>
+    <path d="M 560,300 L 560,350" stroke="black" stroke-width="2"/>
+    <!-- L3 to RAM -->
+    <path d="M 400,430 L 400,500" stroke="black" stroke-width="2"/>
+    
+    <!-- Performance Stats -->
+    <g transform="translate(50, 240)">
+        <text x="0" y="0" font-size="14" font-weight="bold">Typical Access Times:</text>
+        <text x="20" y="25" font-size="12">L1: ~1ns</text>
+        <text x="20" y="45" font-size="12">L2: ~4ns</text>
+        <text x="20" y="65" font-size="12">L3: ~15ns</text>
+        <text x="20" y="85" font-size="12">RAM: ~100ns</text>
+    </g>
+    
+    <!-- Cache Line Info -->
+    <g transform="translate(600, 240)">
+        <text x="0" y="0" font-size="14" font-weight="bold">Cache Line:</text>
+        <text x="20" y="25" font-size="12">64 bytes</text>
+        <text x="20" y="45" font-size="12">Minimum transfer unit</text>
+        <text x="20" y="65" font-size="12">between cache levels</text>
+    </g>
+</svg>

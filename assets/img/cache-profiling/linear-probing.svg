@@ -1,0 +1,52 @@
+<svg viewBox="0 0 800 400" xmlns="http://www.w3.org/2000/svg">
+    <!-- Title -->
+    <text x="400" y="30" text-anchor="middle" font-size="20">Hash Map Implementation Approaches</text>
+
+    <!-- Linear Probing Section -->
+    <g transform="translate(50, 80)">
+        <text x="0" y="0" font-size="16" font-weight="bold">Open Addressing with Linear Probing</text>
+        
+        <!-- Main array -->
+        <rect x="0" y="20" width="600" height="60" fill="none" stroke="black"/>
+        
+        <!-- Array slots -->
+        <rect x="10" y="30" width="70" height="40" fill="#b3d9ff" stroke="black"/>
+        <rect x="85" y="30" width="70" height="40" fill="#b3d9ff" stroke="black"/>
+        <rect x="160" y="30" width="70" height="40" fill="#e6e6e6" stroke="black"/>
+        <rect x="235" y="30" width="70" height="40" fill="#b3d9ff" stroke="black"/>
+        <rect x="310" y="30" width="70" height="40" fill="#ffcccc" stroke="black"/>
+        <rect x="385" y="30" width="70" height="40" fill="#b3d9ff" stroke="black"/>
+        <rect x="460" y="30" width="70" height="40" fill="#e6e6e6" stroke="black"/>
+        <rect x="535" y="30" width="70" height="40" fill="#b3d9ff" stroke="black"/>
+        
+        <!-- Probing example -->
+        <g transform="translate(0, 100)">
+            <text x="10" y="0" font-size="14">Probing Sequence Example:</text>
+            <path d="M 160,0 L 160,-30 A 10,10 0 0 1 235,-30 L 235,-30 A 10,10 0 0 1 310,-30 L 310,-30" 
+                  stroke="#ff6b6b" fill="none" stroke-width="2" marker-end="url(#probeArrow)"/>
+            <text x="10" y="20" font-size="12">Hash collision → probe next slot → probe next slot → found empty</text>
+        </g>
+    </g>
+
+    <!-- Legend -->
+    <g transform="translate(50, 250)">
+        <rect x="0" y="0" width="20" height="20" fill="#e6e6e6" stroke="black"/>
+        <text x="30" y="15" font-size="12">Empty Slot</text>
+        
+        <rect x="150" y="0" width="20" height="20" fill="#b3d9ff" stroke="black"/>
+        <text x="180" y="15" font-size="12">Occupied Slot</text>
+        
+        <rect x="300" y="0" width="20" height="20" fill="#ffcccc" stroke="black"/>
+        <text x="330" y="15" font-size="12">Deleted Slot</text>
+    </g>
+
+    <!-- Arrow markers -->
+    <defs>
+        <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="black"/>
+        </marker>
+        <marker id="probeArrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#ff6b6b"/>
+        </marker>
+    </defs>
+</svg>
