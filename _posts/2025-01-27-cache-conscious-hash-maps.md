@@ -476,3 +476,5 @@ The more stark drop is in the LLC case where it has dropped from the high 50% ra
 Being performant with a cache line isn't just about using a contiguous data structure like a `Vector` over a non-contiguous data structure like a `LinkedList`. It matters far more how many elements you can fit into a cache line and how many pointer chases you go through to get to the actual data.
 
 In the case of `Strings`, it seems we are always doomed to an additional pointer chase which is why `u64` as keys is more cache performant. The best you could do here is to inline smaller strings onto the stack with something like [smol_str](https://crates.io/crates/smol_str), but this only works for strings upto 23 bytes long.
+
+Thank you to [Debasish Ghosh](https://x.com/debasishg) for reviewing a draft of this post.
