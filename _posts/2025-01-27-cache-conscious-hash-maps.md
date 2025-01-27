@@ -1,7 +1,7 @@
 ---
 layout: post
 title: "Cache Conscious Hash Maps"
-category: profiling, performance, hashmap
+category: profiling,performance,hashmap
 ---
 
 *[Here's a link](https://github.com/redixhumayun/hashmap-rs) to the code on GitHub*
