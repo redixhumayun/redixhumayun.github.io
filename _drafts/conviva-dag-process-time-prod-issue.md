@@ -1,7 +1,7 @@
 ---
 layout: post
 title: "The Problem With Concurrent Hashmaps"
-category: async
+category: concurrency
 ---
 
 ## Setting The Stage
