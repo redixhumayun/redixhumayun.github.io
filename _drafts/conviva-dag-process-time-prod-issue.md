@@ -10,19 +10,17 @@ We recently faced an interesting production issue at [Conviva](https://www.convi
 
 On Feb 2nd, we noticed a recurring issue related to a specific customer where their P99 for processing time would absolutely shoot up. It was strange because we could only see it for a single customer which pointed to the issue most likely having to do with the customer's specific DAG.
 
-Looking at the DAG below, you can immediately see a stark difference in terms of the processing time for this specific customer.
-
 ![](/assets/img/conviva/rtve/traffic-from-gateway.png)
 
 Our principal engineer, [Anil Gursel](https://www.linkedin.com/in/anilgursel/), led the initial charge of trying to debug the source of this issue. He eliminated the obvious issues - watermarking, inaccurate metrics etc.
 
 There was some spirited discussion around whether the way [the Tokio runtime](https://github.com/tokio-rs/tokio) was scheduling its tasks across physical threads was causing issues but that seemed improbable given that we use an actor system and each DAG processing task runs independently on a specific actor, and it was unlikely that multiple actors were being scheduled onto the same underlying physical thread.
 
-More analysis of more graphs showed increased context switching during the incident, and there were some questions around whether writes to HDFS were causing this slow down. But, the bottom line remained that the P99 for a customer was way up, and this was causing backpressure across the entire system.
+There were additional lines of inquiry around whether HDFS writes were what was causing the lag to build up and eventually causing a backpressure throughout the system. More analysis of more graphs showed increased context switching during the incident but with still no evidence of the cause.
 
 ## Analyzing The Evidence
 
-Derek Dai (TODO: Insert Derek's LinkedIn profile here), a Senior Engineer at Conviva, was able to reproduce the issue by saving the event data to GCS buckets and replaying this in a perf environment. This was a relief, because at least the issue wasn't tied to production. That would have been a nightmare to debug.
+Derek Dai, a Senior Engineer at Conviva, was able to reproduce the issue by saving the event data to GCS buckets and replaying this in a perf environment. This was a relief because at least the issue wasn't tied to production. That would have been a nightmare to debug.
 
 We track active sessions across our state actors, so we have a reasonable measure of how much load our system is under. However, further analysis in the perf environment revealed that while there was a spike in the number of active sessions, those gradually dropped off while the DAG processing time continued to stay high.
 
@@ -30,7 +28,7 @@ We track active sessions across our state actors, so we have a reasonable measur
 
 While this was still puzzling, at least we had a clear indication of where to look - inside our DAG compiler/engine. All the clues pointed to this as being the source of the issue for the P99 latency spike and the backpressure we were seeing throughout the system.
 
-While we knew where to look, this investigation had already taken weeks and things took a turn for the worse when we hit the issue again on February 23rd. However, there was more evidence coming our way about where to look, all Grafana metrics pointed to DAG processing actually being the cause of slowdown.  Another interesting graph that came up was this one displaying the jump context switches during the incident. While it didn't lead us directly to the root cause at that point, it became important later on as we identified the issue and resolved it because it tied in neatly with our analysis.
+While we knew where to look, this investigation had already taken weeks and things took a turn for the worse when we hit the issue again on February 23rd. However, there was more evidence coming our way about where to look, all Grafana metrics pointed to DAG processing actually being the cause of slowdown.  Another interesting graph that came up was this one displaying the jump in context switches during the incident. While it didn't lead us directly to the root cause at that point, it became important later on as we identified the issue and resolved it because it tied in neatly with our analysis.
 
 ![](/assets/img/conviva/rtve/context-switches.png)
 
@@ -40,6 +38,8 @@ Thanks to Derek's work in recreating the issue in a perf environment, we were ab
 
 ![](/assets/img/conviva/rtve/perf_normal_traffic.svg)
 ![](/assets/img/conviva/rtve/perf_incident_traffic.svg)
+
+In the incident flamegraph, you can clearly see the dreaded wide bars which indicate longer processing time.
 
 [Debasish Ghosh](https://www.linkedin.com/in/debasishgh/), a Principal Engineer at Conviva, pointed out that the flamegraph during the incident displayed a very high load for call paths involving `AtomicUsize::fetch_sub` which was being called from creating and dropping `ReadGuard` in [`flashmap`](https://github.com/Cassy343/flashmap) which we were using as a concurrent hash map. This concurrent hash map was being used as a type registry which was globally shared amongst all DAG's on all state actors.
 
@@ -59,7 +59,9 @@ So, ArcSwap finally fixed it but it is worthwhile to understand why exactly that
 
 ![](/assets/img/conviva/rtve/cache_line_ping_pong.png)
 
-Every CPU has a cache, and every cache requires loading data in from RAM. However, when you have a shared variable like a read counter that is being used by all the cores there is a critical problem under high contention. Each core is going to attempt to increment/decrement the same read counter (its a shared counter), and each modification causes cache invalidation because cache coherence dictates that any change to a cache line requires re-fetching from main memory. This also ties in with the context switching graph we saw earlier, which showed a spike in context switches during the incident.
+Every CPU has a cache, and every cache requires loading data in from RAM. However, when you have a shared variable like a read counter that is being used by all the cores there is a critical problem under high contention. Each core is going to attempt to increment/decrement the same read counter (its a shared counter), and each modification causes cache invalidation because [cache coherence](https://en.wikipedia.org/wiki/Cache_coherence) dictates that any change to a cache line requires re-fetching from main memory. This also ties in with the context switching graph we saw earlier, which showed a spike in context switches during the incident.
+
+*Note: If you're interested in understanding more about hardware caches and their implications, look at [this post]({% post_url 2025-01-27-cache-conscious-hash-maps %})*
 
 Well, its great that we understand the root cause but why does ArcSwap fix the problem?
 
