@@ -99,7 +99,7 @@ Now, let's contrast this with the approach that `ArcSwap` uses. `ArcSwap` follow
 * writers atomically swap in the new data
 * old data is reclaimed later during a reclamation phase
 
-The `ArcSwap` repo even has a [method called `rcu`](https://github.com/vorner/arc-swap/blob/b12da9d783d27111d31afc77e70b07ce6acdf9f6/src/lib.rs#L603), where the documentation explains in more detail
+The `ArcSwap` repo even has a [method called `rcu`](https://github.com/vorner/arc-swap/blob/b12da9d783d27111d31afc77e70b07ce6acdf9f6/src/lib.rs#L603).
 
 <div class="aside">This is not unlike how [snapshot isolation](https://jepsen.io/consistency/models/snapshot-isolation) works in databases with multi-version concurrency control. The purpose is, of course, different but there are overlaps in the mechanism<br/><br/></div>
 
