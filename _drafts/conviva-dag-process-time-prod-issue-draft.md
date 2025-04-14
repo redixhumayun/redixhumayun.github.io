@@ -6,7 +6,7 @@ category: concurrency
 
 [Conviva](https://www.conviva.com/) provides a realtime streaming platform which makes use of *time-state analytics* to provide stateful computations over continuous events. For those curious, the company has published [a CIDR paper](https://www.conviva.com/wp-content/uploads/2023/01/Raising-the-Level-of-Abstraction-for-Time-State-Analytics.pdf) which goes into significantly more detail.
 
-Conviva operates at a very large scale, handling [insert number of events / sec handled] and slightly differentiated logic per customer. This requires encoding each customer's logic into a [directed acyclic graph](https://en.wikipedia.org/wiki/Directed_acyclic_graph) (DAG). Internally, we represent this DAG in YAML and it forms the basis for all customer computations. Maintaining stateful metrics across so many different versions of a compute graph is a super challenging problem which sometimes causes issues like this one.
+Conviva operates at a very large scale, handling [insert number of events / sec handled] and slightly differentiated logic per customer. This requires encoding each customer's logic into a [directed acyclic graph](https://en.wikipedia.org/wiki/Directed_acyclic_graph) (DAG). Internally, we represent this DAG in YAML and it forms the basis for all customer computations. Maintaining stateful metrics across so many different versions of a compute graph is a super challenging problem which sometimes causes issues like the one below.
 
 ## Setting The Stage
 
@@ -99,6 +99,8 @@ Now, let's contrast this with the approach that `ArcSwap` uses. `ArcSwap` follow
 * writers atomically swap in the new data
 * old data is reclaimed later during a reclamation phase
 
+The `ArcSwap` repo even has a [method called `rcu`](https://github.com/vorner/arc-swap/blob/b12da9d783d27111d31afc77e70b07ce6acdf9f6/src/lib.rs#L603), where the documentation explains in more detail
+
 <div class="aside">This is not unlike how [snapshot isolation](https://jepsen.io/consistency/models/snapshot-isolation) works in databases with multi-version concurrency control. The purpose is, of course, different but there are overlaps in the mechanism<br/><br/></div>
 
 `ArcSwap` accomplishes this with a [thread-local epoch counter to track "debt"](https://github.com/vorner/arc-swap/blob/master/src/debt/list.rs#L335) which avoids cache contention issues that crop up when updating a shared read counter.
@@ -137,4 +139,4 @@ Hash maps on the other hand allow updating invidual portions of data in the hash
 
 
 ## Conclusion
-Concurrent hash maps aren't a blanket solution when dealing with high concurrency scenarios. `ArcSwap` is a specialized `AtomicRef` that is designed for occasional swaps where the entire ref is updated. However, if you have an almost read-only scenario this is a great fit.
+Given that we had a situation which was almost read-only, the overhead of a concurrent hash map was not suitable since we had no use case for frequent, granular updates. Trading that for `ArcSwap`, which is a specialized `AtomicRef`, something that is designed for occasional swaps where the entire ref is updated is much better fit for our use case.
