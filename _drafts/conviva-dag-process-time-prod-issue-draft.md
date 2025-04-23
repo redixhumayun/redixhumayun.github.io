@@ -6,11 +6,11 @@ category: concurrency
 
 [Conviva](https://www.conviva.com/) provides a realtime streaming platform which makes use of *time-state analytics* to provide stateful computations over continuous events. For those curious, the company has published [a CIDR paper](https://www.conviva.com/wp-content/uploads/2023/01/Raising-the-Level-of-Abstraction-for-Time-State-Analytics.pdf) which goes into significantly more detail.
 
-Conviva operates at a very large scale, handling [insert number of events / sec handled] and slightly differentiated logic per customer. This requires encoding each customer's logic into a [directed acyclic graph](https://en.wikipedia.org/wiki/Directed_acyclic_graph) (DAG). Internally, we represent this DAG in YAML and it forms the basis for all customer computations. Maintaining stateful metrics across so many different versions of a compute graph is a super challenging problem and we sometimes run into issues like the one below.
+Conviva operates at a very large scale, handling anywhere between 200K-1M events/sec, and has slightly differentiated logic per customer. This requires encoding each customer's logic into a [directed acyclic graph](https://en.wikipedia.org/wiki/Directed_acyclic_graph) (DAG). Internally, we represent this DAG in YAML and it forms the basis for all customer computations. Maintaining stateful metrics across so many different versions of a compute graph is a super challenging problem and we sometimes run into issues like the one below.
 
 ## Setting The Stage
 
-We recently faced an interesting production issue related to the time taken by our DAG engine to process customer events.
+In February, we faced an interesting production issue related to the time taken by our DAG engine to process customer events.
 
 On Feb 2nd, we noticed a recurring issue related to a specific customer where their P99 for processing time would absolutely shoot up. It was strange because we could only see it for a single customer which pointed to the issue most likely having to do with the customer's specific DAG.
 
@@ -26,7 +26,7 @@ There were additional lines of inquiry around whether HDFS writes were what was 
 
 One of our engineers was able to reproduce the issue by saving the event data to GCS buckets and replaying this in an environment enabled with `perf`. This was a relief because at least the issue wasn't tied to the prod environment, which would have been a nightmare to debug.
 
-We track active sessions across our state actors, so we have a reasonable measure of how much load our system is under. However, further analysis in the perf environment revealed that while there was a spike in the number of active sessions, those gradually dropped off while the DAG processing time continued to stay high.
+We track active sessions across our system, so we have a reasonable measure of how much load our system is under. However, further analysis in the perf environment revealed that while there was a spike in the number of active sessions, those gradually dropped off while the DAG processing time continued to stay high.
 
 ![](/assets/img/conviva/rtve/blurred_usecase_active_session.png)
 
@@ -45,7 +45,16 @@ Thanks to the earlier work in recreating the issue in a perf environment, we wer
 
 In the incident flamegraph, you can clearly see the dreaded wide bars which indicate longer processing time.
 
-Looking carefully at the flamegraph generated during the incident, you can see a very high load for call paths involving `AtomicUsize::fetch_sub` which was being called from creating and dropping a `ReadGuard` in [`flashmap`](https://github.com/Cassy343/flashmap) which we were using as a concurrent hash map. This concurrent hash map was being used as a type registry which was globally shared amongst all DAG's on all state actors.
+Looking carefully at the flamegraph generated during the incident, you can see a very high load for call paths involving `AtomicUsize::fetch_sub` which was being called from creating and dropping a `ReadGuard` in [`flashmap`](https://github.com/Cassy343/flashmap), which we were using as a concurrent hash map. This concurrent hash map was being used as a type registry which was globally shared amongst all DAG's across our system.
+
+```rust
+use flashmap::{ReadHandle, WriteHandle};
+
+pub struct TypeRegistry<C: Clone, const N: usize = DEFAULT_N> {
+    writer: Mutex<WriteHandle<ShortTypeId, TypeMetadata<C, N>, BuildNoHashHasher<ShortTypeId>>>,
+    pub(crate) reader: ReadHandle<ShortTypeId, TypeMetadata<C, N>, BuildNoHashHasher<ShortTypeId>>
+}
+```
 
 In the context of this, the earlier graph about the context switches spiking during the incident makes some sense. The `ReadGuard` in the hot path of the flamegraph was responsible for handling reads from various threads and each thread would increment and decrement the counter.
 
@@ -57,9 +66,18 @@ Now, the question was what to do about this. In the [flashmap documentation](htt
 
 Finally, we implemented an [ArcSwap](https://github.com/vorner/arc-swap) based solution and the flamegraph for that was significantly better and the CPU load dropped to 40% in the perf environment.
 
+```rust
+use arc_swap::ArcSwap;
+
+pub struct TypeRegistry<C: Clone, const N: usize = DEFAULT_N> {
+    pub(crate) types:
+        ArcSwap<HashMap<ShortTypeId, TypeMetadata<C, N>, BuildNoHashHasher<ShortTypeId>>>,
+}
+```
+
 ## Post Mortem
 
-So, ArcSwap finally fixed the problem but it is worthwhile to understand why exactly that worked where concurrent hash maps had failed. It's worth repeating here again that our type registry, which is where the hash map was being used was an *almost* read-only scenario.
+So, ArcSwap finally fixed the problem but it is worthwhile to understand why exactly that worked where concurrent hash maps had failed. It's worth repeating here again that our type registry, which is where the hash map was being used, was an *almost* read-only scenario.
 
 First, let's look a little more closely at how concurrent hash maps typically operate (with a little hand-waving for simplicity's sake) - they use a *single, shared* counter which tracks how many readers are currently operating and allow a single writer to operate, not unlike a typical `RWLock`. 
 
@@ -101,7 +119,7 @@ Now, let's contrast this with the approach that `ArcSwap` uses. `ArcSwap` follow
 
 The `ArcSwap` repo even has a [method called `rcu`](https://github.com/vorner/arc-swap/blob/b12da9d783d27111d31afc77e70b07ce6acdf9f6/src/lib.rs#L603).
 
-<div class="aside">This is not unlike how [snapshot isolation](https://jepsen.io/consistency/models/snapshot-isolation) works in databases with multi-version concurrency control. The purpose is, of course, different but there are overlaps in the mechanism<br/><br/></div>
+<div class="aside">This is not unlike how [snapshot isolation](https://jepsen.io/consistency/models/snapshot-isolation) works in databases with multi-version concurrency control. The purpose is, of course, different but there are overlaps in the mechanism.<br/><br/></div>
 
 `ArcSwap` accomplishes this with a [thread-local epoch counter to track "debt"](https://github.com/vorner/arc-swap/blob/master/src/debt/list.rs#L335) which avoids cache contention issues that crop up when updating a shared read counter.
 
