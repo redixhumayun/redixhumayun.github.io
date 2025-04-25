@@ -77,9 +77,17 @@ pub struct TypeRegistry<C: Clone, const N: usize = DEFAULT_N> {
 
 ## Post Mortem
 
-So, ArcSwap finally fixed the problem but it is worthwhile to understand why exactly that worked where concurrent hash maps had failed. It's worth repeating here again that our type registry, which is where the hash map was being used, was an *almost* read-only scenario.
+First, let's look a little more closely at how some concurrent hash maps typically operate. Many designs involve mechanisms like counters to track readers and writers, though the specifics can vary. For example, some implementations use a single, shared counter (not unlike a typical `RWLock`), while others employ sharded designs or multiple counters to reduce contention.
 
-First, let's look a little more closely at how concurrent hash maps typically operate (with a little hand-waving for simplicity's sake) - they use a *single, shared* counter which tracks how many readers are currently operating and allow a single writer to operate, not unlike a typical `RWLock`. 
+For instance, [Dashmap uses a sharded design](https://github.com/xacrimon/dashmap/blob/master/src/lib.rs#L85-L89) where each shard is a separate `HashMap` guarded by a `RWLock`
+
+```rust
+pub struct DashMap<K, V, S = RandomState> {
+    shift: usize,
+    shards: Box<[CachePadded<RwLock<HashMap<K, V>>>]>,
+    hasher: S,
+}
+```
 
 ```text
   [Core 1]             [Core 2]             [Core 3]
@@ -103,7 +111,7 @@ First, let's look a little more closely at how concurrent hash maps typically op
 ⚠️ Constant inter-core cache line transfers = degraded perf
 ```
 
-The fact that this is a single, shared counter causes significant grief under contention because every CPU has a cache, and every cache requires loading data in from RAM. Each core is going to attempt to increment/decrement the same counter, and each modification causes cache invalidation because [cache coherence](https://en.wikipedia.org/wiki/Cache_coherence) dictates that any change to a cache line requires re-fetching from main memory. To understand this better, look at this section below from a great PDF titled [What every systems programmer should know about concurrency](https://assets.bitbashing.io/papers/concurrency-primer.pdf) by [Matt Kline](https://github.com/mrkline).
+In cases where the data is guarded by a single, shared counter contention can arise under high loads. This is because every CPU core attempting to increment or decrement the counter causes cache invalidation due to [cache coherence](https://en.wikipedia.org/wiki/Cache_coherence). Each modification forces the cache line containing the counter to "ping-pong" between cores, leading to degraded performance. To understand this better, look at this section below from a great PDF titled [What every systems programmer should know about concurrency](https://assets.bitbashing.io/papers/concurrency-primer.pdf) by [Matt Kline](https://github.com/mrkline).
 
 ![](/assets/img/conviva/rtve/cache_line_ping_pong.png)
 
@@ -123,7 +131,7 @@ The `ArcSwap` repo even has a [method called `rcu`](https://github.com/vorner/ar
 
 `ArcSwap` accomplishes this with a [thread-local epoch counter to track "debt"](https://github.com/vorner/arc-swap/blob/master/src/debt/list.rs#L335) which avoids cache contention issues that crop up when updating a shared read counter.
 
-A new version of the data is swapped in using the [standard `cmp_xchg`](https://github.com/vorner/arc-swap/blob/master/src/strategy/hybrid.rs#L207) operation. This marks the beginning of a new epoch, but the data associated with the old epoch isn't cleaned up until all "debt" is paid off, that is until all readers of the previous epoch have finished. Once the readers from the previous epoch have finished, the previous epoch is "reclaimed".
+A new version of the data is swapped in using the [standard `cmp_xchg`](https://github.com/vorner/arc-swap/blob/master/src/strategy/hybrid.rs#L207) operation. This marks the beginning of a new epoch, but the data associated with the old epoch isn't cleaned up until all "debt" is paid off, that is until all readers of the previous epoch have finished.
 
 ```text
   [Core 1]             [Core 2]             [Core 3]
@@ -153,8 +161,8 @@ A new version of the data is swapped in using the [standard `cmp_xchg`](https://
 
 The big difference between a concurrent hash map and `ArcSwap` is that `ArcSwap` requires swapping out the entirety of the underlying data with every write but trades this off with very cheap reads. Writes don't even have to wait for all readers to finish since a new epoch is created with the new version of data.
 
-Hash maps on the other hand allow updating invidual portions of data in the hash map but this is where it becomes important that we have an *almost* read-only scenario because the additional overhead of writes with `ArcSwap` is worth paying here since reads are faster.
+Hash maps on the other hand allow updating invidual portions of data in the hash map but this is where it becomes important that we have an *almost* read-only scenario with a small dataset because the additional overhead of writes with `ArcSwap` is worth paying here since reads are faster.
 
 
 ## Conclusion
-Given that we had a situation which was almost read-only, the overhead of a concurrent hash map was not suitable since we had no use case for frequent, granular updates. Trading that for `ArcSwap`, which is a specialized `AtomicRef`, something that is designed for occasional swaps where the entire ref is updated, is a much better fit for our use case.
+Given that we had a situation which was almost read-only, the overhead of a concurrent hash map was not suitable since we had no use case for frequent, granular updates. Trading that for `ArcSwap`, which is a specialized `AtomicRef`, something that is designed for occasional swaps where the entire ref is updated, turned out to be a much better fit for our use case.
