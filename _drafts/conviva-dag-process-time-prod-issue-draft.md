@@ -157,4 +157,4 @@ Hash maps on the other hand allow updating invidual portions of data in the hash
 
 
 ## Conclusion
-Given that we had a situation which was almost read-only, the overhead of a concurrent hash map was not suitable since we had no use case for frequent, granular updates. Trading that for `ArcSwap`, which is a specialized `AtomicRef`, something that is designed for occasional swaps where the entire ref is updated is much better fit for our use case.
+Given that we had a situation which was almost read-only, the overhead of a concurrent hash map was not suitable since we had no use case for frequent, granular updates. Trading that for `ArcSwap`, which is a specialized `AtomicRef`, something that is designed for occasional swaps where the entire ref is updated, is a much better fit for our use case.
