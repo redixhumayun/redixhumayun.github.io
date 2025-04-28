@@ -15,6 +15,7 @@ In February, we faced an interesting production issue related to the time taken 
 On Feb 2nd, we noticed a recurring issue related to a specific customer where their P99 for processing time would absolutely shoot up. It was strange because we could only see it for a single customer which pointed to the issue most likely having to do with the customer's specific DAG.
 
 ![](/assets/img/conviva/rtve/traffic-from-gateway_blur.png)
+<p align="center"><em>Traffic from gateway showing the P99 latency spike</em></p>
 
 We initially tried debugging the issue by eliminating the obvious causes - watermarking, inaccurate metrics etc.
 
@@ -29,19 +30,23 @@ One of our engineers was able to reproduce the issue by saving the event data to
 We track active sessions across our system, so we have a reasonable measure of how much load our system is under. However, further analysis in the perf environment revealed that while there was a spike in the number of active sessions, those gradually dropped off while the DAG processing time continued to stay high.
 
 ![](/assets/img/conviva/rtve/blurred_usecase_active_session.png)
+<p align="center"><em>Session count tracker and processing time</em></p>
 
 While this was still puzzling, at least we had a clear indication of where to look - inside our DAG compiler/engine. All the clues pointed to this as being the source of the issue for the P99 latency spike and the backpressure we were seeing throughout the system.
 
 While we knew where to look, this investigation had already taken weeks and things took a turn for the worse when we hit the issue again on February 23rd. However, there was more evidence coming our way about where to look. All Grafana metrics pointed to DAG processing actually being the cause of slowdown.  Another interesting graph that came up was this one displaying the jump in context switches during the incident. While it didn't lead us directly to the root cause at that point, it became important later on as we identified the issue and resolved it because it tied in neatly with our analysis.
 
 ![](/assets/img/conviva/rtve/context-switches.png)
+<p align="center"><em>Context switches</em></p>
 
 ## Recreating The Crime Scene
 
 Thanks to the earlier work in recreating the issue in a perf environment, we were able to generate these flamegraphs that highlighted hot paths in the code. The first one displays the flamegraph during normal traffic and the second one displays the flamegraph during the incident.
 
 ![](/assets/img/conviva/rtve/perf_normal_traffic.svg)
+<p align="center"><em>Normal traffic flamegraph</em></p>
 ![](/assets/img/conviva/rtve/perf_incident_traffic.svg)
+<p align="center"><em>Incident traffic flamegraph</em></p>
 
 In the incident flamegraph, you can clearly see the dreaded wide bars which indicate longer processing time.
 
@@ -63,6 +68,7 @@ Now, one important thing about the hashmap in the type registry is that it is *a
 Now, the question was what to do about this. In the [flashmap documentation](https://crates.io/crates/flashmap), the performance comparison shows that in the read-heavy scenario [`dashmap`](https://github.com/xacrimon/dashmap) performed better in terms of both latency & throughput. Unfortunately, replacing `flashmap` with `dashmap` did nothing to fix the performance problems. In fact, the flamegraphs turned out to be worse in the same situation with `dashmap`.
 
 ![](/assets/img/conviva/rtve/perf_incident_traffic_dashmapv2.svg)
+<p align="center"><em>Dashmap flamegraph</em></p>
 
 Finally, we implemented an [ArcSwap](https://github.com/vorner/arc-swap) based solution and the flamegraph for that was significantly better and the CPU load dropped to 40% in the perf environment.
 
@@ -76,6 +82,8 @@ pub struct TypeRegistry<C: Clone, const N: usize = DEFAULT_N> {
 ```
 
 ## Post Mortem
+
+So, `ArcSwap` fixed the problem but let's look at why it fixed the problem.
 
 First, let's look a little more closely at how some concurrent hash maps typically operate. Many designs involve mechanisms like counters to track readers and writers, though the specifics can vary. For example, some implementations use a single, shared counter (not unlike a typical `RWLock`), while others employ sharded designs or multiple counters to reduce contention.
 
@@ -111,7 +119,7 @@ pub struct DashMap<K, V, S = RandomState> {
 ⚠️ Constant inter-core cache line transfers = degraded perf
 ```
 
-In cases where the data is guarded by a single, shared counter or residing on the same shard contention can arise under high loads. This is because every CPU core attempting to increment or decrement the counter causes cache invalidation due to [cache coherence](https://en.wikipedia.org/wiki/Cache_coherence). Each modification forces the cache line containing the counter to "ping-pong" between cores, leading to degraded performance. To understand this better, look at this section below from a great PDF titled [What every systems programmer should know about concurrency](https://assets.bitbashing.io/papers/concurrency-primer.pdf) by [Matt Kline](https://github.com/mrkline).
+In cases where the data is guarded by a single, shared counter or residing on the same shard, contention can arise under high loads. This is because every CPU core attempting to increment or decrement the counter causes cache invalidation due to [cache coherence](https://en.wikipedia.org/wiki/Cache_coherence). Each modification forces the cache line containing the counter to "ping-pong" between cores, leading to degraded performance. To understand this better, look at this section below from a great PDF titled [What every systems programmer should know about concurrency](https://assets.bitbashing.io/papers/concurrency-primer.pdf) by [Matt Kline](https://github.com/mrkline).
 
 ![](/assets/img/conviva/rtve/cache_line_ping_pong.png)
 
@@ -127,9 +135,9 @@ Now, let's contrast this with the approach that `ArcSwap` uses. `ArcSwap` follow
 
 The `ArcSwap` repo even has a [method called `rcu`](https://github.com/vorner/arc-swap/blob/b12da9d783d27111d31afc77e70b07ce6acdf9f6/src/lib.rs#L603).
 
-<div class="aside">This is not unlike how [snapshot isolation](https://jepsen.io/consistency/models/snapshot-isolation) works in databases with multi-version concurrency control. The purpose is, of course, different but there are overlaps in the mechanism.<br/><br/></div>
+<div class="aside">This is not unlike how <a href="https://jepsen.io/consistency/models/snapshot-isolation">snapshot isolation</a> works in databases with multi-version concurrency control. The purpose is, of course, different but there are overlaps in the mechanism.<br/></div>
 
-`ArcSwap` accomplishes this with a [thread-local epoch counter to track "debt"](https://github.com/vorner/arc-swap/blob/master/src/debt/list.rs#L335) which avoids cache contention issues that crop up when updating a shared read counter.
+`ArcSwap` avoids cache contention issues for readers that typically crop up when updating a shared read counter with a [thread-local epoch counter to track "debt"](https://github.com/vorner/arc-swap/blob/master/src/debt/list.rs#L335).
 
 A new version of the data is swapped in using the [standard `cmp_xchg`](https://github.com/vorner/arc-swap/blob/master/src/strategy/hybrid.rs#L207) operation. This marks the beginning of a new epoch, but the data associated with the old epoch isn't cleaned up until all "debt" is paid off, that is until all readers of the previous epoch have finished.
 
@@ -165,4 +173,4 @@ Hash maps on the other hand allow updating invidual portions of data in the hash
 
 
 ## Conclusion
-Given that we had a situation which was almost read-only, the overhead of a concurrent hash map was not suitable since we had no use case for frequent, granular updates. Trading that for `ArcSwap`, which is a specialized `AtomicRef`, something that is designed for occasional swaps where the entire ref is updated, turned out to be a much better fit for our use case.
+Given that we had a situation which was almost read-only with a small dataset, the overhead of a concurrent hash map was not suitable since we had no use case for frequent, granular updates. Trading that for `ArcSwap`, which is a specialized `AtomicRef`, something that is designed for occasional swaps where the entire ref is updated, turned out to be a much better fit.
