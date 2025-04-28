@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "Cache Contention, Context Switches, and the Latency Timebomb"
+title: "Concurrency, Cache Lines And Scale"
 category: concurrency
 ---
 
