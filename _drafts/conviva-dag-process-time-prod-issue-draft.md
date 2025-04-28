@@ -20,7 +20,7 @@ We initially tried debugging the issue by eliminating the obvious causes - water
 
 There was some spirited discussion around whether the way [the Tokio runtime](https://github.com/tokio-rs/tokio) was scheduling its tasks across physical threads was causing issues but that seemed improbable given that we use an actor system and each DAG processing task runs independently on a specific actor, and it was unlikely that multiple actors were being scheduled onto the same underlying physical thread.
 
-There were additional lines of inquiry around whether HDFS writes were what was causing the lag to build up and eventually causing a backpressure throughout the system. More analysis of more graphs showed increased context switching during the incident but with still no clear evidence of the cause.
+There were additional lines of inquiry around whether HDFS writes were what was causing the lag to build up and eventually causing a backpressure throughout the system. More analysis of more graphs showed increased context switching during the incident but still with no clear evidence of the cause.
 
 ## Analyzing The Evidence
 
@@ -111,7 +111,7 @@ pub struct DashMap<K, V, S = RandomState> {
 ⚠️ Constant inter-core cache line transfers = degraded perf
 ```
 
-In cases where the data is guarded by a single, shared counter contention can arise under high loads. This is because every CPU core attempting to increment or decrement the counter causes cache invalidation due to [cache coherence](https://en.wikipedia.org/wiki/Cache_coherence). Each modification forces the cache line containing the counter to "ping-pong" between cores, leading to degraded performance. To understand this better, look at this section below from a great PDF titled [What every systems programmer should know about concurrency](https://assets.bitbashing.io/papers/concurrency-primer.pdf) by [Matt Kline](https://github.com/mrkline).
+In cases where the data is guarded by a single, shared counter or residing on the same shard contention can arise under high loads. This is because every CPU core attempting to increment or decrement the counter causes cache invalidation due to [cache coherence](https://en.wikipedia.org/wiki/Cache_coherence). Each modification forces the cache line containing the counter to "ping-pong" between cores, leading to degraded performance. To understand this better, look at this section below from a great PDF titled [What every systems programmer should know about concurrency](https://assets.bitbashing.io/papers/concurrency-primer.pdf) by [Matt Kline](https://github.com/mrkline).
 
 ![](/assets/img/conviva/rtve/cache_line_ping_pong.png)
 
