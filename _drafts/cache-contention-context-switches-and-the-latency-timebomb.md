@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "The Problem With Concurrency"
+title: "Cache Contention, Context Switches, and the Latency Timebomb"
 category: concurrency
 ---
 
@@ -85,7 +85,7 @@ pub struct TypeRegistry<C: Clone, const N: usize = DEFAULT_N> {
 
 So, `ArcSwap` fixed the problem but let's look at why it fixed the problem.
 
-First, let's look a little more closely at how some concurrent hash maps typically operate. Many designs involve mechanisms like counters to track readers and writers, though the specifics can vary. For example, some implementations use a single, shared counter (not unlike a typical `RWLock`), while others employ sharded designs or multiple counters to reduce contention.
+First, let's look a little more closely at how some concurrent hash maps typically operate. Many designs involve mechanisms like counters to track readers and writers, though the specifics can vary. For example, some implementations use a single, shared counter (like a `RWLock`), while others employ sharded designs or multiple counters to reduce contention.
 
 For instance, [Dashmap uses a sharded design](https://github.com/xacrimon/dashmap/blob/master/src/lib.rs#L85-L89) where each shard is a separate `HashMap` guarded by a `RWLock`
 
@@ -119,7 +119,7 @@ pub struct DashMap<K, V, S = RandomState> {
 ⚠️ Constant inter-core cache line transfers = degraded perf
 ```
 
-In cases where the data is guarded by a single, shared counter or residing on the same shard, contention can arise under high loads. This is because every CPU core attempting to increment or decrement the counter causes cache invalidation due to [cache coherence](https://en.wikipedia.org/wiki/Cache_coherence). Each modification forces the cache line containing the counter to "ping-pong" between cores, leading to degraded performance. To understand this better, look at this section below from a great PDF titled [What every systems programmer should know about concurrency](https://assets.bitbashing.io/papers/concurrency-primer.pdf) by [Matt Kline](https://github.com/mrkline).
+In cases where the data is guarded by a single, shared counter or resides on the same shard, contention can arise under high loads. This is because every CPU core attempting to increment or decrement the counter causes cache invalidation due to [cache coherence](https://en.wikipedia.org/wiki/Cache_coherence). Each modification forces the cache line containing the counter to "ping-pong" between cores, leading to degraded performance. To understand this better, look at this section below from a great PDF titled [What every systems programmer should know about concurrency](https://assets.bitbashing.io/papers/concurrency-primer.pdf) by [Matt Kline](https://github.com/mrkline).
 
 ![](/assets/img/conviva/rtve/cache_line_ping_pong.png)
 
@@ -135,7 +135,7 @@ Now, let's contrast this with the approach that `ArcSwap` uses. `ArcSwap` follow
 
 The `ArcSwap` repo even has a [method called `rcu`](https://github.com/vorner/arc-swap/blob/b12da9d783d27111d31afc77e70b07ce6acdf9f6/src/lib.rs#L603).
 
-<div class="aside">This is not unlike how <a href="https://jepsen.io/consistency/models/snapshot-isolation">snapshot isolation</a> works in databases with multi-version concurrency control. The purpose is, of course, different but there are overlaps in the mechanism.<br/></div>
+<div class="aside">This is analogous to how <a href="https://jepsen.io/consistency/models/snapshot-isolation">snapshot isolation</a> works in databases with multi-version concurrency control. The purpose is, of course, different but there are overlaps in the mechanism.<br/></div>
 
 `ArcSwap` avoids cache contention issues for readers that typically crop up when updating a shared read counter with a [thread-local epoch counter to track "debt"](https://github.com/vorner/arc-swap/blob/master/src/debt/list.rs#L335).
 
