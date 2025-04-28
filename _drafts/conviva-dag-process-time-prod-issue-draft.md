@@ -6,7 +6,7 @@ category: concurrency
 
 [Conviva](https://www.conviva.com/) provides a realtime streaming platform which makes use of *time-state analytics* to provide stateful computations over continuous events. For those curious, the company has published [a CIDR paper](https://www.conviva.com/wp-content/uploads/2023/01/Raising-the-Level-of-Abstraction-for-Time-State-Analytics.pdf) which goes into significantly more detail.
 
-Conviva operates at a very large scale, handling around 5 trillion events per day, and has slightly differentiated logic per customer. This requires encoding each customer's logic into a [directed acyclic graph](https://en.wikipedia.org/wiki/Directed_acyclic_graph) (DAG). Internally, we represent this DAG in YAML and it forms the basis for all customer computations. Maintaining stateful metrics across so many different versions of a compute graph is a super challenging problem and we sometimes run into issues like the one below.
+Conviva operates at a very large scale, handling around [5 trillion events per day](https://www.slideshare.net/slideshow/time-state-analytics-minneanalytics-2024-talk/270175638), and has slightly differentiated logic per customer. This requires encoding each customer's logic into a [directed acyclic graph](https://en.wikipedia.org/wiki/Directed_acyclic_graph) (DAG). Internally, we represent this DAG in YAML and it forms the basis for all customer computations. Maintaining stateful metrics across so many different versions of a compute graph is a super challenging problem and we sometimes run into issues like the one below.
 
 ## Setting The Stage
 
