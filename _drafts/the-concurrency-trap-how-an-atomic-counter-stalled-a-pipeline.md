@@ -1,23 +1,19 @@
 ---
 layout: post
-title: "Concurrency, Cache Lines And Scale"
+title: "The Concurrency Trap: How An Atomic Counter Stalled A Pipeline"
 category: concurrency
 ---
 
-[Conviva](https://www.conviva.com/) provides a realtime streaming platform which makes use of *time-state analytics* to provide stateful computations over continuous events. For those curious, the company has published [a CIDR paper](https://www.conviva.com/wp-content/uploads/2023/01/Raising-the-Level-of-Abstraction-for-Time-State-Analytics.pdf) which goes into significantly more detail.
+On February 2nd, [Conviva’s](https://www.conviva.com/) streaming analytics platform suddenly ground to a crawl but only for one customer. P99 latency spiked without clear reason, pushing our DAG engine to its limits. What started as a puzzling slowdown became a deep dive into concurrency pitfalls. If you use Rust at scale, or intend to, you'll enjoy this.
 
-Conviva operates at a very large scale, handling around [5 trillion events per day](https://www.slideshare.net/slideshow/time-state-analytics-minneanalytics-2024-talk/270175638), and has slightly differentiated logic per customer. This requires encoding each customer's logic into a [directed acyclic graph](https://en.wikipedia.org/wiki/Directed_acyclic_graph) (DAG). Internally, we represent this DAG in YAML and it forms the basis for all customer computations. Maintaining stateful metrics across so many different versions of a compute graph is a super challenging problem and we sometimes run into issues like the one below.
+Conviva handles [5 trillion daily events](https://www.slideshare.net/slideshow/time-state-analytics-minneanalytics-2024-talk/270175638) using a [DAG](https://en.wikipedia.org/wiki/Directed_acyclic_graph)(directed acyclic graph) based analytics engine. Each customer's logic gets compiled into a DAG, running concurrently on a custom actor model implementation built on top of Tokio.
 
 ## Setting The Stage
 
-In February, we faced an interesting production issue related to the time taken by our DAG engine to process customer events.
-
-On Feb 2nd, we noticed a recurring issue related to a specific customer where their P99 for processing time would absolutely shoot up. It was strange because we could only see it for a single customer which pointed to the issue most likely having to do with the customer's specific DAG.
+We intially tried debugging the issue by eliminating the obvious causes - watermarking, inaccurate metrics etc.
 
 ![](/assets/img/conviva/rtve/traffic-from-gateway_blur.png)
 <p align="center"><em>Traffic from gateway showing the P99 latency spike</em></p>
-
-We initially tried debugging the issue by eliminating the obvious causes - watermarking, inaccurate metrics etc.
 
 There was some spirited discussion around whether the way [the Tokio runtime](https://github.com/tokio-rs/tokio) was scheduling its tasks across physical threads was causing issues but that seemed improbable given that we use an actor system and each DAG processing task runs independently on a specific actor, and it was unlikely that multiple actors were being scheduled onto the same underlying physical thread.
 
@@ -25,7 +21,7 @@ There were additional lines of inquiry around whether HDFS writes were what was 
 
 ## Analyzing The Evidence
 
-One of our engineers was able to reproduce the issue by saving the event data to GCS buckets and replaying this in an environment enabled with `perf`. This was a relief because at least the issue wasn't tied to the prod environment, which would have been a nightmare to debug.
+We were able to reproduce the issue by saving the event data to GCS buckets and replaying this in an environment enabled with `perf`. This was a relief because at least the issue wasn't tied to the prod environment, which would have been a nightmare to debug.
 
 We track active sessions across our system, so we have a reasonable measure of how much load our system is under. However, further analysis in the perf environment revealed that while there was a spike in the number of active sessions, those gradually dropped off while the DAG processing time continued to stay high.
 
@@ -45,6 +41,7 @@ Thanks to the earlier work in recreating the issue in a perf environment, we wer
 
 ![](/assets/img/conviva/rtve/perf_normal_traffic.svg)
 <p align="center"><em>Normal traffic flamegraph</em></p>
+
 ![](/assets/img/conviva/rtve/perf_incident_traffic.svg)
 <p align="center"><em>Incident traffic flamegraph</em></p>
 
@@ -63,14 +60,14 @@ pub struct TypeRegistry<C: Clone, const N: usize = DEFAULT_N> {
 
 In the context of this, the earlier graph about the context switches spiking during the incident makes some sense. The `ReadGuard` in the hot path of the flamegraph was responsible for handling reads from various threads and each thread would increment and decrement the counter.
 
-Now, one important thing about the hashmap in the type registry is that it is *almost* read-only. That is, it is initialized with some types on start-up and then only updated when a new type is seen but that rarely ever happened. However, on a critical path, it would keep checking to see if the type was already registered which is where the atomic increments and decrements were occurring.
+Now, one important thing about the hashmap in the type registry is that it is *almost* read-only. It is initialized with some types on start-up and then only updated when a new type is seen but that rarely ever happened. However, on a critical path, it would check to see if the type was already registered which is where the atomic increments and decrements were occurring.
 
 Now, the question was what to do about this. In the [flashmap documentation](https://crates.io/crates/flashmap), the performance comparison shows that in the read-heavy scenario [`dashmap`](https://github.com/xacrimon/dashmap) performed better in terms of both latency & throughput. Unfortunately, replacing `flashmap` with `dashmap` did nothing to fix the performance problems. In fact, the flamegraphs turned out to be worse in the same situation with `dashmap`.
 
 ![](/assets/img/conviva/rtve/perf_incident_traffic_dashmapv2.svg)
 <p align="center"><em>Dashmap flamegraph</em></p>
 
-Finally, we implemented an [ArcSwap](https://github.com/vorner/arc-swap) based solution and the flamegraph for that was significantly better and the CPU load dropped to 40% in the perf environment.
+Finally, we implemented an [ArcSwap](https://github.com/vorner/arc-swap) based solution and the flamegraph improved and the CPU load dropped to 40% in the perf environment.
 
 ```rust
 use arc_swap::ArcSwap;
@@ -85,7 +82,7 @@ pub struct TypeRegistry<C: Clone, const N: usize = DEFAULT_N> {
 
 So, `ArcSwap` fixed the problem but let's look at why it fixed the problem.
 
-First, let's look a little more closely at how some concurrent hash maps typically operate. Many designs involve mechanisms like counters to track readers and writers, though the specifics can vary. For example, some implementations use a single, shared counter (like a `RWLock`), while others employ sharded designs or multiple counters to reduce contention.
+First, let's dig into how concurrent hash maps typically operate. Many designs involve mechanisms like counters to track readers and writers, though the specifics can vary. For example, some implementations use a single, shared counter while others employ sharded designs or multiple counters to reduce contention.
 
 For instance, [Dashmap uses a sharded design](https://github.com/xacrimon/dashmap/blob/master/src/lib.rs#L85-L89) where each shard is a separate `HashMap` guarded by a `RWLock`
 
@@ -167,10 +164,9 @@ A new version of the data is swapped in using the [standard `cmp_xchg`](https://
 ✅ Readers are wait-free and isolated
 ```
 
-The big difference between a concurrent hash map and `ArcSwap` is that `ArcSwap` requires swapping out the entirety of the underlying data with every write but trades this off with very cheap reads. Writes don't even have to wait for all readers to finish since a new epoch is created with the new version of data.
+The big difference between a concurrent hash map and `ArcSwap` is that `ArcSwap` requires swapping out the entirety of the underlying data with every write but trades this off with very cheap reads. Writers don't even have to wait for all readers to finish since a new epoch is created with the new version of data.
 
 Hash maps on the other hand allow updating invidual portions of data in the hash map but this is where it becomes important that we have an *almost* read-only scenario with a small dataset because the additional overhead of writes with `ArcSwap` is worth paying here since reads are faster.
-
 
 ## Conclusion
 Given that we had a situation which was almost read-only with a small dataset, the overhead of a concurrent hash map was not suitable since we had no use case for frequent, granular updates. Trading that for `ArcSwap`, which is a specialized `AtomicRef`, something that is designed for occasional swaps where the entire ref is updated, turned out to be a much better fit.
