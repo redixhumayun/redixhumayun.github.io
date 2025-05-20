@@ -4,9 +4,11 @@ title: "The Concurrency Trap: How An Atomic Counter Stalled A Pipeline"
 category: concurrency
 ---
 
-On February 2nd, [Conviva’s](https://www.conviva.com/) streaming analytics platform suddenly ground to a crawl but only for one customer. P99 latency spiked without clear reason, pushing our DAG engine to its limits. What started as a puzzling slowdown became a deep dive into concurrency pitfalls. If you use Rust at scale, or intend to, you'll enjoy this.
+On February 2nd, [Conviva’s](https://www.conviva.com/) streaming analytics platform suddenly ground to a crawl but only for one customer. P99 latency spiked without clear reason, pushing our DAG engine to its limits. What started as a puzzling slowdown soon became a deep dive into concurrency pitfalls.
 
-Conviva handles [5 trillion daily events](https://www.slideshare.net/slideshow/time-state-analytics-minneanalytics-2024-talk/270175638) using a [DAG](https://en.wikipedia.org/wiki/Directed_acyclic_graph)(directed acyclic graph) based analytics engine. Each customer's logic gets compiled into a DAG, running concurrently on a custom actor model implementation built on top of Tokio.
+Conviva’s platform is built to handle [5 trillion daily events](https://www.slideshare.net/slideshow/time-state-analytics-minneanalytics-2024-talk/270175638), powered by a [DAG](https://en.wikipedia.org/wiki/Directed_acyclic_graph) (directed acyclic graph) based analytics engine. Each customer’s logic is compiled into a DAG, running concurrently on a custom actor model built atop Tokio.
+
+This post unpacks how a seemingly innocuous atomic counter in a shared type registry became the bottleneck and what we learned about concurrency, cache lines, and the right data structures for the job. If you use Rust at scale, or plan to, you’ll enjoy this.
 
 ## Setting The Stage
 
