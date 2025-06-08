@@ -4,6 +4,8 @@ title: "The Concurrency Trap: How An Atomic Counter Stalled A Pipeline"
 category: concurrency
 ---
 
+*Note: I wrote this post for Conviva. You can read the version published on Conviva's website [here](https://www.conviva.com/platform/the-concurrency-trap-how-an-atomic-counter-stalled-a-pipeline/)*
+
 On February 2nd, [Conviva’s](https://www.conviva.com/) streaming analytics platform suddenly ground to a crawl but only for one customer. P99 latency spiked without clear reason, pushing our DAG engine to its limits. What started as a puzzling slowdown soon became a deep dive into concurrency pitfalls.
 
 Conviva’s platform is built to handle [5 trillion daily events](https://www.slideshare.net/slideshow/time-state-analytics-minneanalytics-2024-talk/270175638), powered by a [DAG](https://en.wikipedia.org/wiki/Directed_acyclic_graph) (directed acyclic graph) based analytics engine. Each customer’s logic is compiled into a DAG, running concurrently on a custom actor model built atop Tokio.
