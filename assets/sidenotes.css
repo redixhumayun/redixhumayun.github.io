@@ -5,9 +5,9 @@
  * and collapse to expandable footnotes on mobile
  */
 
-/* Counter for sidenote numbering */
+/* Counter for sidenote and footnote numbering */
 body {
-  counter-reset: sidenote-counter;
+  counter-reset: sidenote-counter footnote-counter;
 }
 
 /* Base styles for sidenotes and marginnotes */
@@ -177,4 +177,81 @@ label.margin-toggle:not(.sidenote-number) {
 span.newthought {
   font-variant: small-caps;
   font-size: 1.2em;
+}
+
+/*
+ * Footnotes CSS
+ * Traditional footnotes that appear at the bottom of the page
+ * with numbered references and bidirectional linking
+ */
+
+/* Footnote reference numbering */
+.footnote-ref {
+  counter-increment: footnote-counter;
+}
+
+/* Footnote reference styling (superscript link in text) */
+.footnote-ref::after {
+  content: counter(footnote-counter);
+  font-size: 0.8rem;
+  vertical-align: super;
+  color: #2C9FB4; /* Match your link color */
+  text-decoration: none;
+  margin-left: 0.1rem;
+}
+
+/* Footnotes container at bottom of page */
+.footnotes {
+  margin-top: 3rem;
+  padding-top: 1rem;
+  border-top: 1px solid #ccc;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+/* Footnotes heading */
+.footnotes h2 {
+  font-size: 1.1rem;
+  margin-bottom: 1rem;
+  color: #FF4633; /* Match your heading color */
+}
+
+/* Individual footnote styling */
+.footnotes ol {
+  padding-left: 1.5rem;
+}
+
+.footnotes li {
+  margin-bottom: 0.5rem;
+  position: relative;
+}
+
+/* Footnote number styling */
+.footnotes li::marker {
+  color: #2C9FB4; /* Match your link color */
+  font-weight: bold;
+}
+
+/* Back to reference links */
+.footnote-backref {
+  margin-left: 0.5rem;
+  color: #2C9FB4;
+  text-decoration: none;
+  font-size: 0.8rem;
+}
+
+.footnote-backref:hover {
+  text-decoration: underline;
+}
+
+/* Mobile footnotes adjustments */
+@media (max-width: 760px) {
+  .footnotes {
+    margin-top: 2rem;
+    font-size: 0.85rem;
+  }
+  
+  .footnotes h2 {
+    font-size: 1rem;
+  }
 }

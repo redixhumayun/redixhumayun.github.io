@@ -1,10 +1,10 @@
 ---
 layout: post
-title: "Testing Sidenotes Implementation"
+title: "Testing Sidenotes and Footnotes Implementation"
 category: test
 ---
 
-This post demonstrates the sidenotes functionality that has been added to the blog. Sidenotes are a great way to add additional context or commentary without breaking the flow of the main text.
+This post demonstrates the sidenotes and footnotes functionality that has been added to the blog. These features provide elegant ways to add additional context or commentary without breaking the flow of the main text.
 
 ## Basic Sidenote Usage
 
@@ -18,20 +18,28 @@ We can have multiple sidenotes{% include sidenote.html id="sn-2" text="This is t
 
 Sometimes you want to add a note without numbering{% include marginnote.html id="mn-1" text="This is a marginnote - it appears in the margin but doesn't have a number." %}. That's what marginnotes are for.
 
+## Footnotes Usage
+
+Footnotes{% include footnote.html id="1" %} are different from sidenotes. They appear at the bottom of the page{% include footnote.html id="2" %} and are perfect for citations, references, or lengthy explanations that would be distracting in the margin{% include footnote.html id="3" %}.
+
 ## Code Examples
 
-Here's how to use sidenotes in your Jekyll posts:
+Here's how to use sidenotes and footnotes in your Jekyll posts:
 
 ```markdown
 {% raw %}
 <!-- For numbered sidenotes -->
-{% include sidenote.html text="Your sidenote text here" %}
+{% include sidenote.html id="unique-id" text="Your sidenote text here" %}
 
 <!-- For unnumbered marginnotes -->
-{% include marginnote.html text="Your margin note text here" %}
+{% include marginnote.html id="unique-id" text="Your margin note text here" %}
 
-<!-- With custom IDs -->
-{% include sidenote.html id="custom-id" text="Sidenote with custom ID" %}
+<!-- For footnotes (references) -->
+{% include footnote.html id="1" %}
+
+<!-- Footnotes container at end of post -->
+{% assign footnotes = "First footnote text|Second footnote text" | split: "|" %}
+{% include footnotes.html notes=footnotes %}
 {% endraw %}
 ```
 
@@ -45,4 +53,10 @@ Let's test multiple sidenotes{% include sidenote.html id="sn-5" text="Sidenote 1
 
 ## Conclusion
 
-The sidenotes implementation provides a clean, elegant way to add supplementary information{% include sidenote.html id="sn-8" text="This implementation is based on the Tufte CSS approach and Gwern.net's sidenote system." %} to blog posts without disrupting the reading flow.
+The sidenotes and footnotes implementation provides clean, elegant ways to add supplementary information{% include sidenote.html id="sn-8" text="This implementation is based on the Tufte CSS approach and Gwern.net's sidenote system." %} to blog posts without disrupting the reading flow.
+
+Both systems work together harmoniously{% include footnote.html id="4" %}, allowing you to choose the best presentation method for different types of supplementary content.
+
+<!-- Footnotes section -->
+{% assign footnotes = "Footnotes are traditional references that appear at the bottom of the page with numbered citations.|This allows for longer explanations, citations, or references that might be too lengthy for margin notes.|Perfect for academic writing, citations, or detailed technical explanations that would clutter the margin.|Sidenotes and footnotes can be used together in the same document, each serving their specific purpose for different types of supplementary content." | split: "|" %}
+{% include footnotes.html notes=footnotes %}

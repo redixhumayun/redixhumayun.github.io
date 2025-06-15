@@ -1,13 +1,20 @@
 /*
- * Sidenotes JavaScript
+ * Sidenotes and Footnotes JavaScript
  * Handles positioning and overlap detection for sidenotes
+ * Provides smooth scrolling for footnote links
  * Ensures sidenotes don't overlap on the page
  */
 
 (function() {
     'use strict';
 
-    // Initialize sidenotes when DOM is ready
+    // Initialize sidenotes and footnotes when DOM is ready
+    function initSidenotesAndFootnotes() {
+        initSidenotes();
+        initFootnotes();
+    }
+
+    // Initialize sidenotes positioning
     function initSidenotes() {
         // Only run on desktop/tablet sizes
         if (window.innerWidth <= 760) {
@@ -33,6 +40,61 @@
                 }
             }, 250);
         });
+    }
+
+    // Initialize footnotes smooth scrolling
+    function initFootnotes() {
+        // Add smooth scrolling to footnote links
+        const footnoteRefs = document.querySelectorAll('.footnote-ref');
+        const footnoteBackrefs = document.querySelectorAll('.footnote-backref');
+        
+        // Handle footnote reference clicks
+        footnoteRefs.forEach(function(ref) {
+            ref.addEventListener('click', function(e) {
+                e.preventDefault();
+                const target = document.querySelector(ref.getAttribute('href'));
+                if (target) {
+                    smoothScrollTo(target);
+                }
+            });
+        });
+        
+        // Handle footnote back-reference clicks
+        footnoteBackrefs.forEach(function(backref) {
+            backref.addEventListener('click', function(e) {
+                e.preventDefault();
+                const target = document.querySelector(backref.getAttribute('href'));
+                if (target) {
+                    smoothScrollTo(target);
+                }
+            });
+        });
+    }
+
+    // Smooth scroll function
+    function smoothScrollTo(target) {
+        const targetPosition = target.getBoundingClientRect().top + window.pageYOffset - 20;
+        const startPosition = window.pageYOffset;
+        const distance = targetPosition - startPosition;
+        const duration = 300;
+        let start = null;
+
+        function animation(currentTime) {
+            if (start === null) start = currentTime;
+            const timeElapsed = currentTime - start;
+            const run = ease(timeElapsed, startPosition, distance, duration);
+            window.scrollTo(0, run);
+            if (timeElapsed < duration) requestAnimationFrame(animation);
+        }
+
+        function ease(t, b, c, d) {
+            t /= d / 2;
+            if (t < 1) return c / 2 * t * t + b;
+            t--;
+            return -c / 2 * (t * (t - 2) - 1) + b;
+        }
+
+        requestAnimationFrame(animation);
     }
 
     // Position sidenotes and resolve overlaps
@@ -114,9 +176,9 @@
 
     // Initialize when DOM is ready
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initSidenotes);
+        document.addEventListener('DOMContentLoaded', initSidenotesAndFootnotes);
     } else {
-        initSidenotes();
+        initSidenotesAndFootnotes();
     }
 
 })();
