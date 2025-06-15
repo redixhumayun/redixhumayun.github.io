@@ -122,6 +122,11 @@ label.margin-toggle:not(.sidenote-number) {
 
 /* Mobile styles - responsive behavior */
 @media (max-width: 760px) {
+  /* Reset any desktop constraints on mobile */
+  .post-content, .page-content .wrapper {
+    max-width: none;
+  }
+  
   /* Hide margin toggle labels on mobile except sidenote numbers */
   label.margin-toggle:not(.sidenote-number) {
     display: inline;
@@ -132,22 +137,28 @@ label.margin-toggle:not(.sidenote-number) {
   /* Hide sidenotes by default on mobile */
   .sidenote, .marginnote {
     display: none;
+    float: none;
+    margin-right: 0;
+    width: auto;
+    max-width: none;
+    padding-right: 0;
+    padding-left: 0;
   }
   
   /* Show sidenotes when checkbox is checked on mobile */
   .margin-toggle:checked + .sidenote,
   .margin-toggle:checked + .marginnote {
     display: block;
-    float: left;
-    left: 1rem;
+    float: none;
     clear: both;
-    width: 95%;
-    margin: 1rem 2.5%;
-    vertical-align: baseline;
-    position: relative;
+    width: 100%;
+    margin: 1rem 0;
+    position: static;
     background-color: #f9f9f9;
     border-left: 3px solid #2C9FB4;
-    padding: 0.5rem 1rem;
+    padding: 0.75rem 1rem;
+    border-radius: 4px;
+    box-sizing: border-box;
   }
   
   /* Ensure labels are clickable */
