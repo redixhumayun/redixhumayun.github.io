@@ -1,0 +1,11 @@
+<div class="footnotes">
+  <h2>Footnotes</h2>
+  <ol>
+    {%- for note in include.notes -%}
+    <li id="fn:{{ forloop.index }}">
+      {{ note }}
+      <a href="#fnref:{{ forloop.index }}" class="footnote-backref">↩</a>
+    </li>
+    {%- endfor -%}
+  </ol>
+</div>
