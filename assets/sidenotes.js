@@ -42,19 +42,21 @@
         });
     }
 
-    // Initialize footnotes smooth scrolling
+    // Initialize footnotes smooth scrolling and URL navigation
     function initFootnotes() {
-        // Add smooth scrolling to footnote links
+        // Add smooth scrolling to footnote links while preserving URL hash changes
         const footnoteRefs = document.querySelectorAll('.footnote-ref');
         const footnoteBackrefs = document.querySelectorAll('.footnote-backref');
         
         // Handle footnote reference clicks
         footnoteRefs.forEach(function(ref) {
             ref.addEventListener('click', function(e) {
-                e.preventDefault();
                 const target = document.querySelector(ref.getAttribute('href'));
                 if (target) {
-                    smoothScrollTo(target);
+                    // Allow the default hash change but add smooth scrolling
+                    setTimeout(function() {
+                        smoothScrollTo(target);
+                    }, 10);
                 }
             });
         });
@@ -62,12 +64,34 @@
         // Handle footnote back-reference clicks
         footnoteBackrefs.forEach(function(backref) {
             backref.addEventListener('click', function(e) {
-                e.preventDefault();
                 const target = document.querySelector(backref.getAttribute('href'));
                 if (target) {
-                    smoothScrollTo(target);
+                    // Allow the default hash change but add smooth scrolling
+                    setTimeout(function() {
+                        smoothScrollTo(target);
+                    }, 10);
                 }
             });
+        });
+
+        // Handle direct URL hash navigation (e.g., page loads with #fn:1)
+        if (window.location.hash) {
+            const target = document.querySelector(window.location.hash);
+            if (target && (target.classList.contains('footnote-ref') || target.closest('.footnotes'))) {
+                setTimeout(function() {
+                    smoothScrollTo(target);
+                }, 100);
+            }
+        }
+
+        // Handle browser back/forward navigation
+        window.addEventListener('hashchange', function() {
+            if (window.location.hash) {
+                const target = document.querySelector(window.location.hash);
+                if (target && (target.classList.contains('footnote-ref') || target.closest('.footnotes'))) {
+                    smoothScrollTo(target);
+                }
+            }
         });
     }
 
