@@ -22,6 +22,14 @@ Sometimes you want to add a note without numbering{% include marginnote.html id=
 
 Footnotes{% include footnote.html id="1" %} are different from sidenotes. They appear at the bottom of the page{% include footnote.html id="2" %} and are perfect for citations, references, or lengthy explanations that would be distracting in the margin{% include footnote.html id="3" %}.
 
+### Footnote URL Navigation
+
+Footnotes support full URL navigation{% include footnote.html id="4" %}:
+- **Clickable links**: Each footnote reference and back-reference changes the URL hash
+- **Shareable URLs**: You can copy URLs like `#fn:1` to link directly to specific footnotes  
+- **Browser navigation**: The back button works to return to where you clicked the footnote link
+- **Direct access**: Load a page with `#fn:2` to jump straight to footnote 2
+
 ## Code Examples
 
 Here's how to use sidenotes and footnotes in your Jekyll posts:
@@ -55,8 +63,8 @@ Let's test multiple sidenotes{% include sidenote.html id="sn-5" text="Sidenote 1
 
 The sidenotes and footnotes implementation provides clean, elegant ways to add supplementary information{% include sidenote.html id="sn-8" text="This implementation is based on the Tufte CSS approach and Gwern.net's sidenote system." %} to blog posts without disrupting the reading flow.
 
-Both systems work together harmoniously{% include footnote.html id="4" %}, allowing you to choose the best presentation method for different types of supplementary content.
+Both systems work together harmoniously{% include footnote.html id="5" %}, allowing you to choose the best presentation method for different types of supplementary content.
 
 <!-- Footnotes section -->
-{% assign footnotes = "Footnotes are traditional references that appear at the bottom of the page with numbered citations.|This allows for longer explanations, citations, or references that might be too lengthy for margin notes.|Perfect for academic writing, citations, or detailed technical explanations that would clutter the margin.|Sidenotes and footnotes can be used together in the same document, each serving their specific purpose for different types of supplementary content." | split: "|" %}
+{% assign footnotes = "Footnotes are traditional references that appear at the bottom of the page with numbered citations.|This allows for longer explanations, citations, or references that might be too lengthy for margin notes.|Perfect for academic writing, citations, or detailed technical explanations that would clutter the margin.|Footnotes support full URL navigation with hash changes, browser back button support, and shareable links. Try clicking this footnote number and notice how the URL changes!|Sidenotes and footnotes can be used together in the same document, each serving their specific purpose for different types of supplementary content." | split: "|" %}
 {% include footnotes.html notes=footnotes %}
