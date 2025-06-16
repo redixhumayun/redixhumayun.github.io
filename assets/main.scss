@@ -3,6 +3,7 @@
 
 @import "minima";
 @import url('sidenotes.css');
+@import "prism";
 
 /*Overriding styles*/
 h1, h2, h3, h4 {
@@ -75,3 +76,4 @@ div.highlighter-rouge code {
 div.highlighter-rougue > div.highlight > pre.highlight {
   border: 3px solid #ccc;
 }
+

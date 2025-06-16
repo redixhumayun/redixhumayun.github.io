@@ -37,12 +37,12 @@ Next, why are they both pointing to the same buffer? Well, that's not quite accu
 
 Okay, now that we know what this looks like visually, let's abstract it away into code. 
 
-{% highlight python %}
+```python
 #Computer A sends data
 computerA.send(data)
 #Computer B receives data
 computerB.recv(1024)
-{% endhighlight %}
+```
 
 This code snippet does the exact same thing the image above represents. Except for one curiosity, we don't say computerB.recv(data). Instead, we specify a seemingly random number in the place of data
 
@@ -66,17 +66,17 @@ Ports below 255 are generally reserved for system calls and low-level connection
 
 The bar itself also has a number associated with it. This number is called the IP address. The IP address has a bunch of ports associated with it. Think of it in the following way
 
-{% highlight Python %}
+```Python
           127.0.0.1
           /   |   \
          /    |    \
         /     |     \
       8000  8001   8002  
-{% endhighlight %}
+```
 
 Great, let's set up a connection on a specific port between Computer A and Computer B. 
 
-{% highlight Python %}
+```Python
 # computerA.py
 import socket
 
@@ -88,9 +88,9 @@ computerA.connect(('127.0.0.1', 8000))
 string = 'abcd'
 encoded_string = string.encode('utf-8')
 computerA.send(encoded_string)
-{% endhighlight %}
+```
 
-{% highlight Python %}
+```Python
 # computerB.py
 import socket
 
@@ -104,7 +104,7 @@ client_socket, address = computerB.accept()
 
 data = client_socket.recv(2048)
 print(data.decode('utf-8'))
-{% endhighlight %}
+```
 
 It looks like we've jumped a little ahead in terms of the code, but I'll step through it. We know we have two computers, A and B. Therefore, we need one to send data and one to receive data. 
 
@@ -134,9 +134,9 @@ Our clients and servers need a similar protocol. Or else, how would they know wh
 
 We'll do something simple to illustrate this. Let's say we want to send some data which happens to be an array of strings. Let's assume the array is as follows
 
-{% highlight Python %}
+```Python
 arr = ['random', 'strings', 'that', 'need', 'to', 'be', 'transferred', 'across', 'the', 'network', 'using', 'sockets']
-{% endhighlight %}
+```
 
 The above is the data that is going to be written from the client to the server. Let's create another constraint. The server needs to accept data that is exactly equivalent to the data occupied by the string that is going to be sent across at that instant. 
 
@@ -178,9 +178,9 @@ Great, we have a client running. Next, we need the server.
 
 I want to explain a few specific lines of code in the above gists. The first, from the clientSocket.py file
 
-{% highlight Python %}
+```Python
 len_in_bytes = (len_of_string).to_bytes(2, byteorder='little')
-{% endhighlight %}
+```
 
 What the above does is convert a number into bytes. The first parameter passed to the to_bytes function is the number of bytes allocated to the result of converting len_of_string to its binary representation.
 
@@ -190,10 +190,10 @@ The next line of code I want to take a look at is client_socket.send(string.enco
 
 Next, in the serverSocket.py file:
 
-{% highlight Python %}
+```Python
  data = client_socket.recv(2)
  str_length = int.from_bytes(data, byteorder='little')
-{% endhighlight %}
+```
 
 The first line of code above receives 2 bytes of data from the client. Remember that when we converted the length of the string to a binary format in clientSocket.py, we decided to store the result in 2 bytes. This is why we're reading 2 bytes here for that same data. 
 

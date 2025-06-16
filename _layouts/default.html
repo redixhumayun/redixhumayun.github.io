@@ -15,6 +15,33 @@
 
     {%- include footer.html -%}
 
+    <!-- Prism.js JavaScript for syntax highlighting - all-in-one bundle -->
+    <script src="https://unpkg.com/prismjs@1.29.0/components/prism-core.min.js"></script>
+    <script src="https://unpkg.com/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+    
+    <!-- Initialize Prism.js -->
+    <script>
+      // Multiple fallback attempts to highlight code
+      function tryHighlight() {
+        if (typeof Prism !== 'undefined' && Prism.highlightAll) {
+          console.log('Prism loaded, highlighting code...');
+          Prism.highlightAll();
+          return true;
+        }
+        return false;
+      }
+      
+      // Try immediately
+      if (!tryHighlight()) {
+        // Try after DOM is ready
+        document.addEventListener('DOMContentLoaded', tryHighlight);
+        // Try after everything loads
+        window.addEventListener('load', tryHighlight);
+        // Try with a delay as final fallback
+        setTimeout(tryHighlight, 1000);
+      }
+    </script>
+    
     <!-- Sidenotes JavaScript -->
     <script src="{{ '/assets/sidenotes.js' | relative_url }}"></script>
 

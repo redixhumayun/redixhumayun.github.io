@@ -1,0 +1,85 @@
+// Prism.js Custom Styling
+// Light theme with clean backgrounds and proper contrast
+
+/* Base styling for code blocks */
+pre[class*="language-"],
+code[class*="language-"] {
+  color: #333 !important;
+  background: #f5f2f0 !important;
+  text-shadow: 0 1px white !important;
+  font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace !important;
+  font-size: 1em !important;
+  text-align: left !important;
+  white-space: pre !important;
+  word-spacing: normal !important;
+  word-break: normal !important;
+  word-wrap: normal !important;
+  line-height: 1.5 !important;
+}
+
+/* Code block container styling */
+pre[class*="language-"] {
+  padding: 1em !important;
+  margin: .5em 0 !important;
+  overflow: auto !important;
+  border-radius: 0.3em !important;
+  background: #f5f2f0 !important;
+}
+
+/* Token styling for syntax highlighting */
+
+/* Comments, documentation */
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+  color: slategray !important;
+}
+
+/* Punctuation marks */
+.token.punctuation {
+  color: #999 !important;
+}
+
+/* Properties, tags, booleans, numbers, constants */
+.token.property,
+.token.tag,
+.token.boolean,
+.token.number,
+.token.constant,
+.token.symbol,
+.token.deleted {
+  color: #905 !important;
+}
+
+/* Selectors, attributes, strings, characters, built-ins */
+.token.selector,
+.token.attr-name,
+.token.string,
+.token.char,
+.token.builtin,
+.token.inserted {
+  color: #690 !important;
+}
+
+/* Operators, entities, URLs */
+.token.operator,
+.token.entity,
+.token.url,
+.language-css .token.string,
+.style .token.string {
+  color: #9a6e3a !important;
+}
+
+/* At-rules, attribute values, keywords */
+.token.atrule,
+.token.attr-value,
+.token.keyword {
+  color: #07a !important;
+}
+
+/* Functions and class names */
+.token.function,
+.token.class-name {
+  color: #dd4a68 !important;
+}

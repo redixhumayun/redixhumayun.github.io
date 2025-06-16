@@ -9,6 +9,7 @@ This documentation provides comprehensive information about the Jekyll blog stru
 **Tech Stack**: 
 - Jekyll 3.8.5 static site generator
 - Minima theme (customized)
+- Prism.js syntax highlighting (replacing Rouge)
 - GitHub Pages hosting
 - Ruby/Bundler for dependency management
 
@@ -39,7 +40,6 @@ This documentation provides comprehensive information about the Jekyll blog stru
 ├── assets/                  # Static assets and styling
 │   ├── img/                 # Images organized by post/topic
 │   ├── main.scss            # Main stylesheet (imports Minima + custom)
-│   ├── monokai.css          # Code syntax highlighting
 │   ├── sidenotes.css        # Annotation system styles
 │   └── sidenotes.js         # Annotation system JavaScript
 ├── about.md                 # About page
@@ -97,17 +97,43 @@ This documentation provides comprehensive information about the Jekyll blog stru
 - Liquid templating for dynamic content
 - Automatic loading via `_layouts/default.html`
 
-### 2. Theme Customization
+### 2. Syntax Highlighting System (Prism.js)
 
-**Location**: `assets/main.scss`, `_layouts/default.html`
+**Location**: `_includes/head.html`, `_layouts/default.html`
+
+**Implementation**:
+- **Replaced Rouge** with Prism.js for better syntax highlighting
+- **CDN delivery** using cdnjs for CSS and JavaScript
+- **Autoloader plugin** automatically loads language definitions as needed
+- **Prism Tomorrow theme** for dark syntax highlighting
+
+**Supported Languages** (automatically loaded via CDN):
+- Rust (`rust`)
+- C++ (`cpp`) 
+- JavaScript (`javascript`)
+- Python (`python`)
+- SQL (`sql`)
+- Bash (`bash`)
+- YAML (`yaml`)
+- TypeScript (`typescript`)
+- Plus 290+ other languages
+
+**Configuration**:
+- CSS: `prism-tomorrow.min.css` theme
+- JS: `prism-core.min.js` + `prism-autoloader.min.js`
+- Disabled Rouge in `_config.yml` with `syntax_highlighter_opts: disable: true`
+
+### 3. Theme Customization
+
+**Location**: `assets/main.scss`, `_layouts/default.html`, `_includes/head.html`
 
 **Customizations**:
 - Custom color scheme (headings: #FF4633, links: #2C9FB4)
-- Code block styling improvements
+- Prism.js syntax highlighting integration
 - Responsive layout adjustments
 - Google Analytics integration
 
-### 3. Content Organization
+### 4. Content Organization
 
 **Categories**: 
 - `concurrency/` - Concurrency and parallel programming posts
@@ -150,7 +176,24 @@ bundle exec jekyll serve --port 4001
    category: databases  # or concurrency, performance, etc.
    ---
    ```
-3. Write content using Markdown + annotation includes
+3. Write content using Markdown + annotation includes + code blocks
+
+**Code Blocks** (using Prism.js):
+```markdown
+```language
+your code here
+```
+```
+
+**Supported language identifiers**:
+- `rust` - Rust code
+- `cpp` - C++ code  
+- `javascript` - JavaScript
+- `python` - Python
+- `sql` - SQL queries
+- `bash` - Shell scripts
+- `yaml` - YAML configuration
+- `typescript` - TypeScript
 
 **New Draft**:
 1. Create file in `_drafts/` with format `title.md` (no date)
@@ -269,6 +312,13 @@ Research shows{% include footnote.html id="1" %} this conclusion.
 - Check that footnote IDs match between reference and footnote
 - Ensure smooth scrolling doesn't interfere with navigation
 
+**Syntax Highlighting Not Working**:
+- Check that Prism.js CSS/JS are loading from CDN
+- Verify language identifier is correct (e.g., `cpp` not `c++`)
+- Ensure code blocks use triple backticks, not Jekyll highlight tags
+- Check browser console for JavaScript errors
+- Verify `_config.yml` has Rouge disabled with `syntax_highlighter_opts: disable: true`
+
 ### Build Errors:
 
 **Jekyll Build Failures**:
@@ -284,10 +334,12 @@ Research shows{% include footnote.html id="1" %} this conclusion.
 ## File Relationships
 
 ### Critical Dependencies:
-- `_layouts/default.html` → loads `assets/sidenotes.js`
+- `_layouts/default.html` → loads `assets/sidenotes.js` and Prism.js from CDN
+- `_includes/head.html` → loads Prism.js CSS from CDN
 - `assets/main.scss` → imports `assets/sidenotes.css`
 - All annotation includes depend on CSS classes in `sidenotes.css`
 - JavaScript positioning depends on specific CSS class structure
+- Prism.js autoloader handles language-specific highlighting dynamically
 
 ### Safe to Modify:
 - Individual post content
@@ -298,13 +350,16 @@ Research shows{% include footnote.html id="1" %} this conclusion.
 ### Modify with Caution:
 - `assets/sidenotes.css` (affects all annotation positioning)
 - `assets/sidenotes.js` (affects annotation behavior)
-- `_layouts/default.html` (affects entire site)
-- `_config.yml` (affects Jekyll build process)
+- `_layouts/default.html` (affects entire site, loads Prism.js)
+- `_includes/head.html` (affects site-wide CSS loading, includes Prism.js)
+- `_config.yml` (affects Jekyll build process, syntax highlighting configuration)
 
 ## Performance Considerations
 
-- **CSS**: Single file load, responsive without JavaScript dependency
-- **JavaScript**: Loads only on pages with annotations, minimal DOM manipulation
+- **CSS**: Sidenotes CSS + Prism.js CSS loaded from CDN, responsive without JavaScript dependency  
+- **JavaScript**: Sidenotes JS loads on all pages, Prism.js autoloader only loads needed languages
+- **Syntax Highlighting**: Prism.js core is only 2KB, language definitions are ~300-500 bytes each
+- **CDN Benefits**: Prism.js served from cdnjs with browser caching and global distribution
 - **Images**: Organized by topic, use appropriate formats and sizes
 - **Build time**: Keep `_site/` in `.gitignore`, only commit source files
 
