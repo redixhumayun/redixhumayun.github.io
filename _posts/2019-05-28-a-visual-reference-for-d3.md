@@ -23,7 +23,7 @@ The thing I love about D3 is that its built on top of the smallest primitives, a
 
 If you were to use a typical charting library for React, you'd probably do something like this 
 
-{% highlight javascript %}
+```javascript
 import { BarChart } from 'generic-charting-library'
 
 export default class Chart() {
@@ -33,7 +33,7 @@ export default class Chart() {
     )
   }
 }
-{% endhighlight %}
+```
 
 The above is perfectly fine for most use cases. However, the moment you want to do anything slightly more complicated like interacting with the bar chart in unique ways (think beyond just displaying a tool tip), my personal experience has been that it turns into a war with the documentation of the library. 
 
@@ -140,11 +140,11 @@ You won't see anything on the screen yet because the chart is transparent at thi
 
 We'll also define some dimensions for our chart area like the height, width and margins.
 
-{% highlight javascript %}
+```javascript
 const height = 600
 const width = 800
 const margin = { top: 15, right: 30, bottom: 15, left: 30 }
-{% endhighlight  %}
+```
 
 Now that we've defined the dimensions we need to actually create the area for our chart in the DOM. To do that, we need to use something called `d3.select`
 
@@ -152,12 +152,12 @@ Think of this as exectly the same as the set of `document.getElementBy[X]` comma
 
 When you use something like ```d3.select('.chart')```, you are asking D3 to select an element with a class named chart. 
 
-{% highlight javascript %}
+```javascript
 const chart = d3
   .select(".chart")
   .attr("width", width)
   .attr("height", height)
-{% endhighlight %}
+```
 
 Note that we're saving the selection inside of a variable. This will be important later. 
 
@@ -202,11 +202,11 @@ To define the scale we need two things: the domain and the range.
 
 We'll use a simple, stupid rule to define our domain. We'll assume that the minimum value we can have for one of our categories is 0 and the max value is 100. No negative numbers. The domain then becomes `[0, 100]`
 
-{%highlight javascript%}
+```javascript
 const y = d3.scaleLinear()
             .domain([0, 100])
             .range([height - margin.bottom, margin.top])
-{%endhighlight%}
+```
 
 One thing we need to examine here is the range. It took me a little while to understand why the range seems to be in "reverse". My initial thought was that the range should be `[margin.top, height - margin.bottom]`. But, we want our Y axis for the chart to start at the bottom and moves vertically upwards. 
 
@@ -248,9 +248,9 @@ In the example of the linear scale, if you were to provide a value of 5.5, it wo
 
 Now, let's construct the X axis. 
 
-{%highlight javascript%}
+```javascript
 function getKeys(array) {
-  return array.map(arrObj = {
+  return array.map(arrObj => {
     return arrObj.category;
   });
 }
@@ -260,7 +260,7 @@ const keys = getKeys(data)
 const x = d3.scaleOrdinal()
             .domain([...keys])
             .range([margin.left, width - margin.right])
-{%endhighlight%}
+```
 
 If you're wondering about the function in there and the variable keys, that is to extract all the categories present in our data and provide it to the domain function as an array. 
 
@@ -273,19 +273,19 @@ The range, as I have already mentioned, needs to grow from left to right. So, we
 Now, we have the chart area and the scales defined, we need to set up the axes themselves. Here is how we do that. 
 
 
-{%highlight javascript%}
+```javascript
 const xAxis = d3.axisBottom(x)
-{%endhighlight%}
+```
 
 Here, we are creating a **function** called xAxis which uses the `d3.axisBottom` function with our x scale provided as a parameter. 
 
 To actually display the X-axis on our chart, we need to do the following
 
-{%highlight javascript%}
+```javascript
 chart.append('g')
       .attr('transform', `translate(0, ${height})`)
       .call(xAxis)
-{%endhighlight%}
+```
 
 Two things to examine here. 
 
@@ -305,28 +305,28 @@ The last part of the method chain is a `call` function where the xAxis is provid
 
 We'll examine just these two lines first. 
 
-{% highlight javascript %}
+```javascript
 .append('g')
 .attr('transform', `translate(0, ${height})`)
-{% endhighlight %}
+```
 
 What you need to understand is that when you do something like `chart.append('g')`, this appends a `g` element onto the chart element, selects the `g` element and then returns it. You can test this by doing the following
 
-{% highlight javascript %}
+```javascript
 const test = chart.append('g')
       .attr('transform', `translate(0, ${height})`)
       .call(xAxis)
 
 console.log(test)
-{% endhighlight %}
+```
 
 When the result of the log shows up, you'll see a `g` element under a `Selection` object. This is actually what enables us to do method chaining on the `append` method. Since it returns the `g` element, we can transform as part of the same method chain. 
 
 Let's go to the last line now 
 
-{% highlight javascript %}
+```javascript
  .call(xAxis)
-{% endhighlight %}
+```
 
 Here's what D3's documentation says about `call`
 
@@ -348,14 +348,14 @@ If you're still confused about how `call` works hopefully the following graphic 
 
 Creating the Y axis now that we know how the X axis works is far simpler. We use the same principles but swap out `axisBottom` for `axisLeft` and change the translate function slightly. 
 
-{% highlight javascript %}
+```javascript
 const yAxis = d3.axisLeft(y);
 
 chart
   .append("g")
   .attr("transform", `translate(${margin.left}, ${margin.bottom})`)
   .call(yAxis);
-{% endhighlight %}
+```
 
 You'll notice that the `transform` attribute has a `translate` function where the `y` attribute is set to `margin.bottom`. If you go back to the range we set for the y scale, you'll notice we set it to `height - margin.bottom`. 
 
@@ -367,7 +367,7 @@ This is the most visually important part of the chart because this is where the 
 
 First, let me just show you the code that will create the bars for us and then step through it. 
 
-{% highlight javascript %}
+```javascript
 chart.selectAll('rect')
     .data(data)
     .join('rect')
@@ -376,7 +376,7 @@ chart.selectAll('rect')
     .attr('width', x.bandwidth())
     .attr('height', height - y(d.value))
     .style('fill', 'steelblue')
-{% endhighlight %}
+```
 
 The first two lines are straightforward. `selectAll` works the same as `select` except it returns all possible selections of a specific elemenet. 
 
@@ -402,7 +402,7 @@ The graphic above illustrates what is going on when you do a data join. If you t
 
 Another thing D3 will do is associate each data point from your array to its respective `rect` element. 
 
-{% highlight javascript %}
+```javascript
 const data = [1, 2, 3, 4, 5]
 
 const selection = d3.selectAll('rect')
@@ -414,7 +414,7 @@ selection.each(function(d, i) {
 })
 
 //1, 2, 3, 4, 5
-{% endhighlight %}
+```
 
 The above code snippet shows you how to do the logging of each individual data point to satisfy your own curiosity. 
 
@@ -436,7 +436,7 @@ You can see how each of them relate to the SVG coordinate space in the image.
 
 Let's translate the above into code. 
 
-{% highlight javascript %}
+```javascript
 chart
   .selectAll("rect")
   .data(data)
@@ -446,7 +446,7 @@ chart
   .attr("width", x.bandwidth())
   .attr("height", d => height - y(d.value))
   .style("fill", "steelblue");
-{% endhighlight %}
+```
 
 Let's step through the bits of the code after the `.join` call. 
 
@@ -484,14 +484,14 @@ Now, we get to the easy bit. It's only easy because of everything we've covered 
 
 Similar to how we've appended `rects` to our SVG so far, we can also append `text` as an SVG element like below:
 
-{% highlight javascript %}
+```javascript
 chart.append('text')
       .attr('x', width / 2)
       .attr('y', margin.top)
       .style('font-size', 32px)
       .style('text-anchor', 'middle')
       .text('Distribution Among Categories')
-{% endhighlight %}
+```
 
 The text SVG element also has an `x` and `y` attribute that work very similarly to how the `x` and `y` attributes of the `rect` work. 
 
@@ -499,14 +499,14 @@ You can set different style attributes to the text element and you set the text 
 
 Now, let's place the Y-axis label
 
-{% highlight javascript %}
+```javascript
 chart
   .append("text")
   .attr("transform", "rotate(-90)")
   .attr("x", -height / 2)
   .attr("y", margin.left / 4)
   .text("Values")
-{% endhighlight %}
+```
 
 Okay, this one is a little confusing, so let's step through it. 
 

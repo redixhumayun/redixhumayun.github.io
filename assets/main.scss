@@ -75,3 +75,77 @@ div.highlighter-rouge code {
 div.highlighter-rougue > div.highlight > pre.highlight {
   border: 3px solid #ccc;
 }
+
+/* Prism.js styling - ensure it works properly */
+pre[class*="language-"],
+code[class*="language-"] {
+  color: #333 !important;
+  background: #f5f2f0 !important;
+  text-shadow: 0 1px white !important;
+  font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace !important;
+  font-size: 1em !important;
+  text-align: left !important;
+  white-space: pre !important;
+  word-spacing: normal !important;
+  word-break: normal !important;
+  word-wrap: normal !important;
+  line-height: 1.5 !important;
+}
+
+pre[class*="language-"] {
+  padding: 1em !important;
+  margin: .5em 0 !important;
+  overflow: auto !important;
+  border-radius: 0.3em !important;
+  background: #f5f2f0 !important;
+}
+
+/* Ensure Prism tokens are styled */
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+  color: slategray !important;
+}
+
+.token.punctuation {
+  color: #999 !important;
+}
+
+.token.property,
+.token.tag,
+.token.boolean,
+.token.number,
+.token.constant,
+.token.symbol,
+.token.deleted {
+  color: #905 !important;
+}
+
+.token.selector,
+.token.attr-name,
+.token.string,
+.token.char,
+.token.builtin,
+.token.inserted {
+  color: #690 !important;
+}
+
+.token.operator,
+.token.entity,
+.token.url,
+.language-css .token.string,
+.style .token.string {
+  color: #9a6e3a !important;
+}
+
+.token.atrule,
+.token.attr-value,
+.token.keyword {
+  color: #07a !important;
+}
+
+.token.function,
+.token.class-name {
+  color: #dd4a68 !important;
+}
