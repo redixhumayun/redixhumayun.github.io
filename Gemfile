@@ -37,4 +37,3 @@ gem "webrick", "~> 1.7"
 gem 'rexml', '~> 3.2.4'
 
 gem "kramdown", '~> 1.14'
-gem "rouge", '~> 3.0'
