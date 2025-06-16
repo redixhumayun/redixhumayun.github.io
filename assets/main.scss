@@ -57,4 +57,48 @@ a, a:visited, a:hover{
   color: #333;
 }
 
+/* Code block scroll behavior for long snippets */
+pre {
+  max-height: 400px;
+  overflow-y: auto;
+  overflow-x: auto;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Ensure code blocks maintain their styling */
+pre code {
+  display: block;
+  padding: 1em;
+  line-height: 1.5;
+}
+
+/* Scrollbar styling for webkit browsers */
+pre::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+pre::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+pre::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+pre::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Responsive behavior for mobile */
+@media (max-width: 760px) {
+  pre {
+    max-height: 300px;
+    font-size: 0.9em;
+  }
+}
+
 
