@@ -1,156 +1,74 @@
 ---
-# this is empty front matter
+layout: default
 ---
 
-<!DOCTYPE html>
-<html lang="en">
+<!-- Hero Section -->
+<section class="hero-section">
+  <h1 class="hero-title">Zaid Humayun's Blog</h1>
+  <p class="hero-subtitle">
+    A self-taught developer exploring the depths of databases, systems programming, concurrency, and performance optimization. 
+    Welcome to my journey through the technical landscape.
+  </p>
+</section>
 
-<head>
-  <meta charset="utf-8">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <!-- Begin Jekyll SEO tag v2.5.0 -->
-  <title>Zaid Humayun’s Blog</title>
-  <meta name="generator" content="Jekyll v3.8.5" />
-  <meta property="og:title" content="Zaid Humayun’s Blog" />
-  <meta property="og:locale" content="en_US" />
-  <meta name="description"
-    content="Welcome to my blog. I am a self-taught developer. I write about programming and web development." />
-  <meta property="og:description"
-    content="Welcome to my blog. I am a self-taught developer. I write about programming and web development." />
-  <link rel="canonical" href="http://localhost:4000/" />
-  <meta property="og:url" content="http://localhost:4000/" />
-  <meta property="og:site_name" content="Zaid Humayun’s Blog" />
-  <script type="application/ld+json">
-{"headline":"Zaid Humayun’s Blog","url":"http://localhost:4000/","name":"Zaid Humayun’s Blog","description":"Welcome to my blog. I am a self-taught developer. I write about programming and web development.","@type":"WebSite","@context":"http://schema.org"}</script>
-  <!-- End Jekyll SEO tag -->
-  <link rel="stylesheet" href="/assets/main.css">
-  <link type="application/atom+xml" rel="alternate" href="http://localhost:4000/feed.xml" title="Zaid Humayun's Blog" />
-  {% if jekyll.environment == 'production' %}
-  {% include analytics.html %}
-  {% endif %}
-</head>
+<!-- Blog Posts Section -->
+<div class="blog-articles">
+  <h2 class="post-list-heading">Latest Blog Posts</h2>
+  <ul class="post-list">
+    {% for post in site.posts %}
+    <li>
+      <span class="post-meta">{{ post.date | date: "%B %d, %Y" }}</span>
+      <h3>
+        <a class="post-link" href="{{ post.url }}">{{ post.title }}</a>
+      </h3>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
 
-<body>
-  <header class="site-header" role="banner">
+<!-- Medium Articles Section -->
+<div class="medium-articles">
+  <h2 class="post-list-heading" id="prior-medium-articles">Featured Medium Articles</h2>
+  <h3>
+    <a target="_blank"
+      href="https://medium.freecodecamp.org/how-to-build-a-pwa-with-create-react-app-and-custom-service-workers-376bd1fdc6d3">
+      How to build a PWA with Create-React-App and custom service workers
+    </a>
+  </h3>
+  <h3>
+    <a target="_blank"
+      href="https://medium.freecodecamp.org/how-to-customize-service-workers-with-create-react-app-4424dda6210c">
+      How to customize service workers with create-react-app
+    </a>
+  </h3>
+  <h3>
+    <a target="_blank"
+      href="https://medium.freecodecamp.org/how-to-build-a-custom-pwa-with-workbox-in-create-react-app-be580686cf73">
+      How to build a custom PWA with Workbox in create-react-app
+    </a>
+  </h3>
+  <h3>
+    <a target="_blank"
+      href="https://medium.freecodecamp.org/how-to-tackle-root-finding-in-javascript-40d2c34507b2">
+      How to tackle root finding in JavaScript
+    </a>
+  </h3>
+  <h3>
+    <a target="_blank" href="https://medium.com/swlh/how-computers-do-math-11af23139db">
+      How Computers Do Math
+    </a>
+  </h3>
+  <h3>
+    <a target="_blank" href="https://medium.com/swlh/building-memory-with-logic-gates-f36aec5c11b2">
+      Building Memory With Logic Gates
+    </a>
+  </h3>
+</div>
 
-    <div class="wrapper">
-      <a class="site-title" rel="author" href="/">Zaid Humayun&#39;s Blog</a>
-      <nav class="site-nav">
-        <div class="trigger">
-          <a class="page-link" href="/about/">About</a>
-        </div>
-      </nav>
-    </div>
-  </header>
-  <main class="page-content" aria-label="Content">
-    <div class="wrapper">
-      <div class="blog-articles">
-        <h2 class="post-list-heading">Blog Posts</h2>
-        <ul class="post-list">
-          {% for post in site.posts %}
-          <li>
-            <span class="post-meta">{{ post.date | date: "%Y-%m-%d" }}</span>
-            <h3>
-              <a class="post-link" href="{{ post.url }}">{{ post.title }}</a>
-            </h3>
-          </li>
-          {% endfor %}
-        </ul>
-      </div>
-      <div class="medium-articles grouping">
-        <h2 class="post-list-heading" id="prior-medium-articles">Medium Articles</h2>
-        <h3>
-          <a target="_blank"
-            href="https://medium.freecodecamp.org/how-to-build-a-pwa-with-create-react-app-and-custom-service-workers-376bd1fdc6d3">
-            How to build a PWA with Create-React-App and custom service workers
-          </a>
-        </h3>
-        <h3>
-          <a target="_blank"
-            href="https://medium.freecodecamp.org/how-to-customize-service-workers-with-create-react-app-4424dda6210c">
-            How to customize service workers with create-react-app
-          </a>
-        </h3>
-        <h3>
-          <a target="_blank"
-            href="https://medium.freecodecamp.org/how-to-build-a-custom-pwa-with-workbox-in-create-react-app-be580686cf73">
-            How to build a custom PWA with Workbox in create-react-app
-          </a>
-        </h3>
-        <h3>
-          <a target="_blank"
-            href="https://medium.freecodecamp.org/how-to-tackle-root-finding-in-javascript-40d2c34507b2">
-            How to tackle root finding in JavaScript
-          </a>
-        </h3>
-        <h3>
-          <a target="_blank" href="https://medium.com/swlh/how-computers-do-math-11af23139db">
-            How Computers Do Math
-          </a>
-        </h3>
-        <h3>
-          <a target="_blank" href="https://medium.com/swlh/building-memory-with-logic-gates-f36aec5c11b2">
-            Building Memory With Logic Gates
-          </a>
-        </h3>
-      </div>
-      <p class="feed-subscribe">
-        <svg class="svg-icon orange">
-          <use xlink:href="/assets/minima-social-icons.svg#rss"></use>
-        </svg>
-        <a href="/feed.xml">Subscribe</a>
-      </p>
-    </div>
-    </div>
-  </main>
-  <footer class="site-footer h-card">
-    <data class="u-url" href="/"></data>
-
-    <div class="wrapper">
-
-      <h2 class="footer-heading">Zaid Humayun&#39;s Blog</h2>
-
-      <div class="footer-col-wrapper">
-        <div class="footer-col footer-col-1">
-          <ul class="contact-list">
-            <li class="p-name">Zaid Humayun&#39;s Blog</li>
-            <li>
-              <a class="u-email" href="mailto:redixhumayun@gmail.com">redixhumayun@gmail.com</a>
-            </li>
-          </ul>
-        </div>
-
-        <div class="footer-col footer-col-2">
-          <ul class="social-media-list">
-            <li>
-              <a href="https://github.com/{{ site.github_username }}">
-                <svg class="svg-icon">
-                  <use xlink:href="/assets/minima-social-icons.svg#github"></use>
-                </svg>
-                <span class="username">{{ site.github_username }}</span>
-              </a>
-            </li>
-            <li>
-              <a href="https://www.twitter.com/{{ site.twitter_username }}">
-                <svg class="svg-icon">
-                  <use xlink:href="/assets/minima-social-icons.svg#twitter"></use>
-                </svg>
-                <span class="username">{{ site.twitter_username }}</span>
-              </a>
-            </li>
-          </ul>
-        </div>
-
-        <div class="footer-col footer-col-3">
-          <p>Welcome to my blog. I am a self-taught developer. Currently, I am mainly writing about databases and
-            concurrency. </p>
-        </div>
-      </div>
-
-    </div>
-
-  </footer>
-</body>
-
-</html>
+<!-- Subscribe Section -->
+<div class="feed-subscribe">
+  <svg class="svg-icon orange">
+    <use xlink:href="/assets/minima-social-icons.svg#rss"></use>
+  </svg>
+  <a href="/feed.xml">Subscribe to RSS Feed</a>
+</div>
