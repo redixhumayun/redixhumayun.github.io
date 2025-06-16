@@ -3,7 +3,6 @@
 
 @import "minima";
 @import url('sidenotes.css');
-@import "prism";
 
 /*Overriding styles*/
 h1, h2, h3, h4 {
@@ -48,11 +47,6 @@ a, a:visited, a:hover{
   margin: 0 auto;
 }
 
-/* Adjusted styles for vertically scrollable code blocks */
-.highlight > pre {
-  overflow-y: auto;
-  max-height: 500px; /* Adjust the height as needed */
-}
 
 /* Add this to your CSS file */
 .aside {
@@ -63,17 +57,4 @@ a, a:visited, a:hover{
   color: #333;
 }
 
-/* Custom styling for code highlight sections */
-div.highlighter-rouge {
-  background-color: transparent; /* Remove background color */
-}
-div.highlighter-rouge .highlight {
-  background-color: transparent;
-}
-div.highlighter-rouge code {
-  background-color: transparent;
-}
-div.highlighter-rougue > div.highlight > pre.highlight {
-  border: 3px solid #ccc;
-}
 
