@@ -1,0 +1,118 @@
+{
+  "permissions": {
+    "allow": [
+      // === WEB RESEARCH & DEBUGGING ===
+      // Allow fetching from any domain for research, documentation, and debugging
+      "WebFetch(domain:*)",
+      // === JEKYLL DEVELOPMENT ===
+      // Jekyll server management
+      "Bash(bundle exec jekyll serve:*)",
+      "Bash(bundle exec jekyll build:*)",
+      "Bash(jekyll:*)",
+      // Ruby/Bundle dependency management
+      "Bash(bundle exec:*)",
+      "Bash(bundle install:*)",
+      "Bash(bundle update:*)",
+      "Bash(bundle info:*)",
+      // === GIT OPERATIONS ===
+      // Basic git workflow
+      "Bash(git fetch:*)",
+      "Bash(git pull:*)",
+      "Bash(git checkout:*)",
+      "Bash(git branch:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git merge:*)",
+      // GitHub CLI for PR creation
+      "Bash(gh pr create:*)",
+      // === FILE SYSTEM OPERATIONS ===
+      // Full file system access within project
+      "FileSystem(read:*)",
+      "FileSystem(write:*)",
+      "FileSystem(create:*)",
+      "FileSystem(delete:*)",
+      // Command line file operations
+      "Bash(mkdir:*)",
+      "Bash(rm:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(touch:*)",
+      "Bash(chmod:*)",
+      // === PROCESS MANAGEMENT (RESTRICTED) ===
+      // Only allow process inspection
+      "Bash(ps aux | grep jekyll:*)",
+      "Bash(ps aux | grep bundle:*)",
+      "Bash(ps aux | grep ruby:*)",
+      // Only allow killing Jekyll/Bundle processes by name (safer than PID)
+      "Bash(pkill -f jekyll:*)",
+      "Bash(pkill -f bundle:*)",
+      "Bash(pkill -f ruby:*)",
+      // Port checking for Jekyll server
+      "Bash(lsof -i :4000:*)",
+      "Bash(lsof -i :*)",
+      // === TEXT PROCESSING & SEARCH ===
+      // File search and content analysis
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      // Text manipulation
+      "Bash(sed:*)",
+      "Bash(awk:*)",
+      "Bash(sort:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(cat:*)",
+      "Bash(less:*)",
+      // === NETWORK TOOLS ===
+      // Web content fetching and network debugging
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(ping:*)",
+      // === PACKAGE MANAGEMENT ===
+      // Node.js/npm for MCP servers and tools
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      // === SYSTEM INFORMATION ===
+      // Basic system info for debugging
+      "Bash(ls:*)",
+      "Bash(pwd:*)",
+      "Bash(whoami:*)",
+      "Bash(which:*)",
+      "Bash(echo:*)",
+      //  === PUPPETEER ===
+      "mcp__puppeteer__puppeteer_navigate",
+      "mcp__puppeteer__puppeteer_screenshot",
+      "mcp__puppeteer__puppeteer_evaluate",
+      //  === FILESYSTEM ===
+      "mcp__filesystem__list_directory",
+      "mcp__filesystem__read_multiple_files",
+      "mcp__filesystem__read_file"
+    ],
+    "deny": [
+      // === DANGEROUS PROCESS MANAGEMENT ===
+      "Bash(kill:*)", // Deny generic kill command
+      "Bash(killall:*)", // Deny killall
+      "Bash(pkill -9:*)", // Deny force kill
+      "Bash(sudo:*)", // Deny sudo access
+      "Bash(su:*)", // Deny user switching
+      // === SYSTEM SERVICE MANAGEMENT ===
+      "Bash(systemctl:*)",
+      "Bash(service:*)",
+      "Bash(launchctl:*)", // macOS service management
+      // === DISK & FILE SYSTEM OPERATIONS ===
+      "Bash(dd:*)", // Disk operations
+      "Bash(mkfs:*)", // File system creation
+      "Bash(fdisk:*)", // Disk partitioning
+      "Bash(mount:*)", // File system mounting
+      "Bash(umount:*)" // File system unmounting
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "puppeteer",
+    "filesystem"
+  ]
+}
