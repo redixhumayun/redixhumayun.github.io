@@ -1,4 +1,4 @@
-[](## Relevant Dimensions To Compare Optimizer Models
+## Relevant Dimensions To Compare Optimizer Models
 
 - Query complexity analysis. Are there specific types of queries that do better with a specific kind of optimizer? Do these tend to be OLTP or OLAP queries?
 - Runtime cost. What is the tradeoff?
