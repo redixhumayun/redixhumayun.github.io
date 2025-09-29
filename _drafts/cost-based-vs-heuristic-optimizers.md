@@ -13,7 +13,7 @@
 
 - Hardware changes the cost model 
 
-  For example, the following quote from [PostgreSQL docs]([https://www.postgresql.org/docs/current/runtime-config-query.html](https://www.postgresql.org/docs/current/runtime-config-query.html#GUC-RANDOM-PAGE-COST))
+  For example, the following quote from [PostgreSQL docs](https://www.postgresql.org/docs/current/runtime-config-query.html#GUC-RANDOM-PAGE-COST)
   "e.g., solid-state drives, might also be better modeled with a lower value for random_page_cost, e.g., 1.1."
 
   The following quote from an [SO answer](https://stackoverflow.com/questions/66820661/index-scan-vs-sequential-scan-in-postgres)
