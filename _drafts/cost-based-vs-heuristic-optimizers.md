@@ -1,11 +1,23 @@
 ## Relevant Dimensions To Compare Optimizer Models
 
-- How do OLTP vs OLAP differ in terms of optimizers? Which do they prefer? Why?
+- Query complexity analysis. Are there specific types of queries that do better with a specific kind of optimizer? Do these tend to be OLTP or OLAP queries?
 - Runtime cost. What is the tradeoff?
+- Do relational vs non-relational data models perform better with a specific kind of optimizer?
+- Shared-node (single server) vs Shared-disk (multiple servers, one storage) vs Shared-nothing (distributed)
+  - shared-node - SQLite, PostgreSQL
+  - shared-disk - ClickHouse
+  - shared-nothing - need examples
 - What is the cost of stale statistics for each? Is there more of a performance hit on CBO? [Perhaps relevant](https://medium.com/nazar-io/sql-performance-killers-stale-statistics-f735411facc8)
-- Do SQL vs NoSQL systems differ in how they do optimization?
-- What about cloud-native vs traditional databases? What about shared-storage vs shared-nothing databases?
 
+## Hardware Impact
+
+- Hardware changes the cost model 
+
+  For example, the following quote from [PostgreSQL docs]([https://www.postgresql.org/docs/current/runtime-config-query.html](https://www.postgresql.org/docs/current/runtime-config-query.html#GUC-RANDOM-PAGE-COST))
+  "e.g., solid-state drives, might also be better modeled with a lower value for random_page_cost, e.g., 1.1."
+
+  The following quote from an [SO answer](https://stackoverflow.com/questions/66820661/index-scan-vs-sequential-scan-in-postgres)
+  "You can tune random_page_cost to influence the point where a sequential scan is chosen. If you have SSD storage, you should set the parameter to 1.0 or 1.1 to tell PostgreSQL that index scans are cheaper on your hardware."
 
 ## Systems To Analyze
 
@@ -24,6 +36,9 @@
 | PostgreSQL | Cost-Based + GEQO | OLTP |
 | SQLite | Cost-Based | OLTP |
 
+## General Questions
+
+- Are there any systems used in production which implement a purely heuristic optimizer with fixed cost strategies?
 
 ## Links
 
