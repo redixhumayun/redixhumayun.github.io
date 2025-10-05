@@ -88,9 +88,21 @@ SQLite provides the ability for advanced programmers to exercise control over th
 
 - Are there any systems used in production which implement a purely heuristic optimizer with fixed cost strategies?
 
+  ### Oracle
+
   Oracle [deprecated](https://docs.oracle.com/cd/B13789_01/server.101/b10752/whatsnew.htm) their RBO in the 10g release, and emphasized switching to their CBO. [Here](https://stackoverflow.com/questions/493492/oracle-10-optimizer-from-rule-to-cost-why) is an SO question asking about this. [Here](https://www.relationaldbdesign.com/sql-tuning/module7/rule-based-optimizer.php) is another reference for this.
 
-  SQLite 
+  ### SQLite
+  
+  In the old version of the query planner, SQLite provided manual control over the query plan chosen by the optimizer. See 7.1.1. Manual Control Of Query Plans Using SQLITE_STAT Tables of the [SQLite docs](https://www.sqlite.org/optoverview.html). Apparently, you can fudge the ANALYZE results in the `sqlite_stat1` table.
+
+  TODO: Try this out and update here with results.
+
+  Again, in [SQLite docs](https://www.sqlite.org/optoverview.html), see 7.1.2. Manual Control of Query Plans using CROSS JOIN which states that "Programmers can force SQLite to use a particular loop nesting order for a join by using the CROSS JOIN operator instead of just JOIN, INNER JOIN, NATURAL JOIN, or a "," join."
+
+  All of this is apparently not recommended any more by the [SQLite's Next Generation Query Planner](https://www.sqlite.org/queryplanner-ng.html#howtofix) which has improved enough that it is very unlikely that a programmer will need these hacks.
+
+  In general, SQLite seems to use fixed cost estimates if ANALYZE is never run on the database. For example from Section 6. The Skip-Scan Optimization in the [SQLite docs](https://www.sqlite.org/optoverview.html), "Without the results of ANALYZE, SQLite has to guess at the "shape" of the data in the table, and the default guess is that there are an average of 10 duplicates for every value in the left-most column of the index."
 
 ## Links
 
