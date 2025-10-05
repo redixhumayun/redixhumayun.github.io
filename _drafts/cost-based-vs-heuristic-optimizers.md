@@ -1,3 +1,40 @@
+## Rough Outline
+
+- Start off with explaining the spectrum from heuristic to cost based optimization. Add a small note on rule based optimizers (screw Oracle).
+- Explain difference in no cost vs fixed cost vs dynamic cost optimizers.
+- Mention list of cost factors typically used in dynamic cost optimizers.
+- Track history of some engines over when they moved from heuristic to dynamic cost optimizers.
+- Explore knobs exposed by different engines for tuning the planner.
+- Explore different cost factors used by different engines in their dynamic cost optimizers.
+
+ There isn't a clear line of demarcation between a heuristic vs cost based optimizer. This is more of a spectrum.
+
+ ```text
+ Question: How does the optimizer choose between alternatives?
+
+                    Uses transformation rules?
+                           │
+                    ┌──────┴──────┐
+                   Yes           (N/A - everyone uses rules)
+                    │
+            Considers costs?
+                    │
+         ┌──────────┴──────────┐
+        No                    Yes
+         │                     │
+    Heuristic           Cost calculated how?
+    (pure rules)              │
+         │            ┌────────┴────────┐
+    Pick by:         Fixed            Dynamic
+    - First match   values          from stats
+    - Fixed order      │                │
+                  Heuristic         Cost-Based
+                  w/ costs          Optimizer
+                  (hybrid)          (System-R,
+                                     Starburst,
+                                     Volcano)
+```                                     
+
 ## Relevant Dimensions To Compare Optimizer Models
 
 - Query complexity analysis. Are there specific types of queries that do better with a specific kind of optimizer? Do these tend to be OLTP or OLAP queries?
