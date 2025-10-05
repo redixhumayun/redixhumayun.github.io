@@ -1,6 +1,6 @@
 ## Rough Outline
 
-- Start off with explaining the spectrum from heuristic to cost based optimization. Add a small note on rule based optimizers (screw Oracle).
+- Start off with explaining the spectrum from heuristic to cost based optimization. Add a small note on rule based optimizers(Oracle RBO, deprecated in 2003 for Oracle 10g).
 - Explain difference in no cost vs fixed cost vs dynamic cost optimizers.
 - Mention list of cost factors typically used in dynamic cost optimizers.
 - Track history of some engines over when they moved from heuristic to dynamic cost optimizers.
@@ -28,11 +28,12 @@
     Pick by:         Fixed            Dynamic
     - First match   values          from stats
     - Fixed order      │                │
-                  Heuristic         Cost-Based
-                  w/ costs          Optimizer
+    Eg: Oracle     Heuristic         Cost-Based
+      RBO          w/ costs          Optimizer
                   (hybrid)          (System-R,
-                                     Starburst,
+                  Eg: SQLite        Starburst,
                                      Volcano)
+                                    Eg: Modern, Postgres, MySQL etc.
 ```                                     
 
 ## Relevant Dimensions To Compare Optimizer Models
@@ -70,7 +71,7 @@
 |----------|------------------|-----------------|
 | ClickHouse | Heuristic → CBO | OLAP |
 | DuckDB | Hybrid Rules+Cost | OLAP |
-| PostgreSQL | Cost-Based + GEQO | OLTP |
+| PostgreSQL | Cost-Based | OLTP |
 | SQLite | Cost-Based | OLTP |
 
 ## General Questions
@@ -86,6 +87,7 @@
 1. [What Sets Cost Based Vs Heuristic Optimizers Apart](https://celerdata.com/glossary/cost-based-optimizer-vs-rule-based-optimizer)
 1. [Simple Introduction To Cost Based vs Heuristic Optimizers](https://dzone.com/articles/optimizing-database-queries-exploring-the-heuristi)
 1. [Understanding Cost-Based Optimizer: How It Works and Why It Matters](https://celerdata.com/glossary/cost-based-optimizer)
+1. [A Practical Guide To Rule Based Optimizer](https://celerdata.com/glossary/rule-based-optimizer) [Outlines the cost of heuristic vs CBO's]
 
 ### Specific Systems
 
