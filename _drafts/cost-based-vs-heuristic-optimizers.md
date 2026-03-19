@@ -17,6 +17,8 @@ Interestingly, SQLite provides the ability to exercise control over the query pl
 SQLite provides the ability for advanced programmers to exercise control over the query plan chosen by the optimizer. One method for doing this is to fudge the ANALYZE results in the sqlite_stat1 table.
 """
 
+Postgres also exposes hacks to force a specific query plan as seen [here](https://www.cybertec-postgresql.com/en/forcing-a-join-order-in-postgresql/).
+
  There isn't a clear line of demarcation between a heuristic vs cost based optimizer. This is more of a spectrum.
 
  ```text
