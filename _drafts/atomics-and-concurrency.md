@@ -100,7 +100,7 @@ int main() {
 }
 ```
 
-The multi-threaded example above will fail to compile with TSan because there is a clear data race when thread 1 is trying to set the value of data and thread 2 is trying to read the value of data. The easy answer here is a mutex to protect the write & read of data but there's a way to do this with an atomic boolean. 
+The multi-threaded example above will result in a runtime error because there is a clear data race when thread 1 is trying to set the value of data and thread 2 is trying to read the value of data. The easy answer here is a mutex to protect the write & read of data but there's a way to do this with an atomic boolean. 
 
 We loop on the atomic boolean until we find that it is set to the value we are looking for and then check the the value of `data`.
 
