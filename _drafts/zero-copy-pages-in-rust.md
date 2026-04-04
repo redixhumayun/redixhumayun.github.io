@@ -133,23 +133,28 @@ pub struct BufferFrame {
 Now, we're going to store this frame inside a `PageReadGuard`.
 
 ```rust
-// To keep the example small, the next type is schematic rather than literal. 
-// I'm using it to show the ownership tradeoff, not the exact implementation details of `RwLockReadGuard`, which actually uses a borrow
+// To keep the example small, the next type is schematic rather than literal.
+// I'm using it to show the ownership tradeoff, not the exact implementation
+// details of `RwLockReadGuard`.
 /// Read guard providing shared access to a pinned page.
 pub struct PageReadGuard {
-    page: RwLockReadGuard<PageBytes>,
+    page: PageBytes,
 }
 ```
 
-A problem here is that we're going to keep copying PageBytes anytime we construct a `PageReadGuard` which happens anytime a transaction wants to read a page during its operations. We want to avoid these copies, so let's introduce a lifetime.
+This version is simple to model, but it bakes copying into the design. If every higher-level page object owns its own `PageBytes`, then constructing those objects from buffer-pool storage means materializing fresh owned values.
+
+What we actually want is not ownership, but a borrowed view into bytes that already live somewhere else. We can model that by introducing a lifetime.
 
 ```rust
 pub struct PageReadGuard<'a> {
-    page: RwLockReadGuard<'a, PageBytes>,
+    page: &'a PageBytes,
 }
 ```
 
-With this lifetime annotation, we are proving to the compiler that `PageReadGuard` will not outlive `PageBytes` which allows us to guarantee that we won't be left with a dangling pointer.
+With this lifetime annotation, we are proving to the compiler that `PageReadGuard` will not outlive `PageBytes`, which means higher-level page objects can become views into existing bytes rather than owned copies.
+
+In the real implementation, the field is `RwLockReadGuard<'a, PageBytes>` rather than `&'a PageBytes`, but the ownership story is the same: the guard borrows the page bytes instead of owning them, and our wrapper carries that borrow forward.
 
 Typical database engines have two core page types - heap and btree pages. So let's introduce the former with two data structures in our engine - `HeapPage` and `HeapPageView` . The structure of the page is going to be a standard [slotted page](https://siemens.blog/posts/database-page-layout/) layout.
 
