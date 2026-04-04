@@ -103,6 +103,21 @@ bundle exec jekyll build
 
 ## Content Guidelines
 
+### ASCII Diagrams
+
+Use fenced code blocks with the Kramdown IAL `{: .ascii-art}` immediately after the closing fence. This overrides the stylesheet's `max-height` limit so the diagram is never scrollable.
+
+~~~markdown
+```
+  ┌──────────────┐
+  │   My Box     │
+  └──────────────┘
+```
+{: .ascii-art}
+~~~
+
+The CSS rule lives in `assets/main.scss` under `.ascii-art pre`. Do **not** wrap ASCII blocks in `<div>` tags — Jekyll treats HTML blocks as raw HTML and the backtick fences will render as literal text instead of a code block.
+
 ### Annotation Usage Templates
 ```markdown
 <!-- Sidenotes: numbered margin notes -->
