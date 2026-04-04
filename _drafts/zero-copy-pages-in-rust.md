@@ -4,11 +4,11 @@ title: "Zero-Copy Pages in Rust: Or How I Learned To Stop Worrying And Love Life
 category: databases
 ---
 
-Zero-copy is a way to elide CPU copies between the kernel and user space buffers and in high throughput applications like database engines. It makes a huge difference in performance under high load, especially when your working set is no longer cache resident.
+Zero-copy is a way to elide CPU copies between the kernel and user space buffers that is particularly useful in high throughput applications like database engines. It makes a huge difference in performance under high load, particularly when your working set is no longer cache resident.
 
 ## What Is Zero-Copy
 
-Here is what a typical database engine looks like. For the purpose of this article, assume that every layer has copies between them.
+Here is what a typical database engine looks like. For the purpose of this article, assume that every layer creates copies between them.
 
 ```
   ┌─────────────────────────────────────────────────────────┐
@@ -21,7 +21,7 @@ Here is what a typical database engine looks like. For the purpose of this artic
                            │
   ┌────────────────────────▼────────────────────────────────┐
   │                    Transaction Manager                  │
-  └──────────┬─────────────┴─────────────────┬─────────────┘
+  └──────────┬─────────────┴─────────────────┬──────────────┘
              │                               │
   ┌──────────▼──────────┐       ┌────────────▼────────────┐
   │    Lock Manager     │       │      Log Manager        │
@@ -35,34 +35,36 @@ Here is what a typical database engine looks like. For the purpose of this artic
   │                    Disk                                 │
   └─────────────────────────────────────────────────────────┘
 ```
+{: .ascii-art}
 
 Trying to build a high performance engine requires eliding any non-useful work as far as possible and copying data falls squarely in this category.
 
-Think of each copy operation as an equivalent of `memcpy()` which requires the CPU to copy data from a source and put it into a destination. You're spending cycles on non-essential work and this can cause cache eviction of hot data from CPU caches.
+Think of each copy operation as an equivalent of `memcpy()`{% include sidenote.html id="sn-memcpy" text="memcpy can actually cause <a href='https://www.intel.com/content/www/us/en/developer/articles/technical/performance-optimization-of-memcpy-in-dpdk.html'>pipeline stalls</a> which is something you want to avoid in high perf applications." %} which requires the CPU to copy data from a source and put it into a destination. You're spending cycles on non-essential work and this can cause eviction of hot data from CPU caches.
 
 [Here's](https://www.linuxjournal.com/article/6345) a great example of the lifecycle that a typical read or write operation goes through. All those CPU copies are useless work that are burning cycles.
 
-![](/assets/img/zero-copy/read_write_lifecycle.png)
+| ![](/assets/img/zero-copy/read_write_lifecycle.png) |
+|:--:|
+| *Image taken from https://www.linuxjournal.com/article/6345* |
 
 Now, let's focus on eliminating copies at the layer between the buffer pool and disk first.
 
 ## The Buffer Pool And Direct IO
 
-The buffer pool opens and stores file descriptors with the `open()` syscall. When we call `read()` and `write()` on those file descriptors it goes through the whole cycle you saw earlier with copies between userspace, kernel and DMA.
-
 {% include marginnote.html id="mn-1" text="[Here's](https://lkml.org/lkml/2002/5/11/58) a famous tirade from Linus Torvalds on the direct IO interface. He doesn't like database developers." %}
 
-An easy win here is to use direct IO with the [O_DIRECT](https://man7.org/linux/man-pages/man2/open.2.html) flag. This will force the application to bypass the OS page cache, however this means we lost readahead and write coalescing.
+The buffer pool opens and stores file descriptors with the `open()` syscall. When we call `read()` and `write()` on those file descriptors it goes through the whole cycle you saw earlier with copies between userspace, kernel and DMA.
 
-<div class="aside">
-A large number of modern databases use this approach, although there are hold outs like Postgres.
-</div>
+An easy win here is to use direct IO with the [O_DIRECT](https://man7.org/linux/man-pages/man2/open.2.html) flag{% include sidenote.html id="sn-1" text="A large number of modern databases use this approach, although there are holdouts like Postgres." %}. This will force the application to bypass the OS page cache{% include footnote.html id="1" %}.
+
+`O_DIRECT` requires that the buffers submitted are pointer aligned. In Rust, we guarantee this with `#[repr(align(4096))]` on the buffer holding our page. Without this, every `O_DIRECT` read or write would fail with `EINVAL`{% include sidenote.html id="sn-einval" text="Here's a <a href='https://gist.github.com/redixhumayun/8f402d30ffc8437e043394b9c003698b'>gist</a> showing this in C — the first program uses malloc (not 4096-aligned) and the write fails, the second uses posix_memalign and succeeds." %}.
 
 Since we're bypassing the kernel page cache we don't get useful boosts like [readahead](https://lwn.net/Articles/888715/) or [write coalescing](https://www.thomas-krenn.com/en/wiki/Linux_Page_Cache_Basics) but this is exactly why a buffer pool is so important in a database.
 
 The buffer pool is a replacement for the OS page cache designed with specific workloads in mind. It's always helpful to think of this in terms of mechanism + policy. 
 
 Mechanism: A fixed size page table which serves page requests for the layers above and evicts some pages to make room for others.
+
 Policy: A way to decide which page to evict (eviction policy)
 
 ```
@@ -77,7 +79,6 @@ Policy: A way to decide which page to evict (eviction policy)
   │                    Transaction                          │
   │                                                         │
   │   tx_id | ConcurrencyManager | RecoveryManager          │
-  │   BufferList (tracks pinned frames for this txn)        │
   └────────────────────────┬────────────────────────────────┘
                            │ pin() / unpin()
   ┌────────────────────────▼────────────────────────────────┐
@@ -92,7 +93,6 @@ Policy: A way to decide which page to evict (eviction policy)
   │  │ 4KB data │  │ 4KB data │  │          │               │
   │  └──────────┘  └──────────┘  └──────────┘               │
   │                                                         │
-  │  resident_shards: { file:3 → Frame 0, file:7 → Frame 1} │
   │  policy: LRU | CLOCK | SIEVE                            │
   └────────────────────────┬────────────────────────────────┘
                            │ 
@@ -103,14 +103,15 @@ Policy: A way to decide which page to evict (eviction policy)
   │    [ file:1 ]  [ file:3 ]  [ file:7 ]  [ file:9 ]       │
   └─────────────────────────────────────────────────────────┘
 ```
-
-Making a performant buffer pool is a significant challenge.
+{: .ascii-art}
 
 Choosing the right policy for your system depends on the characteristics of your workload but most systems typically go with [CLOCK](https://www.geeksforgeeks.org/operating-systems/second-chance-or-clock-page-replacement-policy/) which is an LRU approximation. [Here's](https://en.wikipedia.org/wiki/Cache_replacement_policies) a non-exhaustive list of replacement policies used in buffer pools.
 
 ## Removing Copies From Above The Buffer Pool
 
-Rust has a great and terrible way to avoid dealing with copies of data - references. It's great because it's a single character (&), it's terrible because now we have to learn to deal with [lifetimes](https://doc.rust-lang.org/rust-by-example/scope/lifetime.html).
+Rust has a great and terrible way to avoid dealing with copies of data - references. It's great because it's a single character(&), it's terrible because now we have to learn to deal with [lifetimes](https://doc.rust-lang.org/rust-by-example/scope/lifetime.html).
+
+The simplest way to think about lifetimes is that you are proving to the compiler that any reference held by type A will not outlive the data it points to.
 
 Let's start with defining the raw bytes for a single page like below
 
@@ -120,7 +121,7 @@ pub struct PageBytes {
 }
 ```
 
-Now, we'll define the data that is held within a single buffer pool frame
+Now, we'll define the data that is held within a single buffer pool frame. The `RwLock<T>` type here is our page latch.
 
 ```rust
 #[derive(Debug)]
@@ -129,12 +130,14 @@ pub struct BufferFrame {
 }
 ```
 
-Now, we're going to store this frame inside a `PageWriteGuard`
+Now, we're going to store this frame inside a `PageReadGuard`.
 
 ```rust
+// To keep the example small, the next type is schematic rather than literal. 
+// I'm using it to show the ownership tradeoff, not the exact implementation details of `RwLockReadGuard`, which actually uses a borrow
 /// Read guard providing shared access to a pinned page.
-pub struct PageReadGuard<'a> {
-    page: RwLockReadGuard<'a, PageBytes>,
+pub struct PageReadGuard {
+    page: RwLockReadGuard<PageBytes>,
 }
 ```
 
@@ -142,15 +145,36 @@ A problem here is that we're going to keep copying PageBytes anytime we construc
 
 ```rust
 pub struct PageReadGuard<'a> {
-    page: Option<RwLockReadGuard<'a, PageBytes>>,
+    page: RwLockReadGuard<'a, PageBytes>,
 }
 ```
 
 With this lifetime annotation, we are proving to the compiler that `PageReadGuard` will not outlive `PageBytes` which allows us to guarantee that we won't be left with a dangling pointer.
 
-Typical database engines have two core page types - heap and btree pages. So let's introduce the former with two data structures in our engine - `HeapPage` and `HeapPageView` and the structure of the page is going to be a standard [slotted page](https://siemens.blog/posts/database-page-layout/) layout.
+Typical database engines have two core page types - heap and btree pages. So let's introduce the former with two data structures in our engine - `HeapPage` and `HeapPageView` . The structure of the page is going to be a standard [slotted page](https://siemens.blog/posts/database-page-layout/) layout.
+
+A slotted page is divided into the header, the line pointers and the record space, so we'll create a struct for each and store all these references in our `HeapPage`.
 
 ```rust
+pub struct HeapHeaderRef<'a> {
+    bytes: &'a [u8],
+}
+
+struct LinePtrBytes<'a> {
+    bytes: &'a [u8],
+}
+
+struct LinePtrArray<'a> {
+    bytes: LinePtrBytes<'a>,
+    len: usize,
+    capacity: usize,
+}
+
+struct HeapRecordSpace<'a> {
+    bytes: &'a [u8],
+    base_offset: usize,
+}
+
 struct HeapPage<'a> {
     header: HeapHeaderRef<'a>,
     line_pointers: LinePtrArray<'a>,
@@ -163,16 +187,344 @@ pub struct HeapPageView<'a> {
 }
 ```
 
-I want to talk a little bit about the design here because I think it really helps to build a mental model of Rust lifetimes.
+All of them share the exact same lifetime of `'a`, which means that any of these references held by another type will not outlive the type.
 
-The structure here is odd because naturally you'd imagine that `HeapPage` would store the guard to keep the page pinned and `HeapPageView` would store the pointers into the bytes themselves. Or, even better, get rid of `HeapPageView` and store the guard and the pointers within `HeapPage`.
+And all of these types are references into the exact same set of bytes held by `PageBytes` in the `BufferFrame`.
 
-This leads us into the classic [self-referential struct](https://quinedot.github.io/rust-learning/pf-meta.html) in Rust, which is a terrible thing because it makes pointer invalidation very hard. Imagine for a moment you have a struct and it has two fields - A and B, with B pointing to A. Now, your struct is moved 
+```
+PageBytes (owned by BufferFrame)
+┌─────────────────────────────────────────────────────┐
+│ Header (34 bytes)                                   │
+│ page_type | slot_count | free_lower | free_upper .. │
+├─────────────────────────────────────────────────────┤
+│ Line Pointers (grows →)                             │
+│ [ slot 0 ] [ slot 1 ] [ slot 2 ] ...                │
+├─────────────────────────────────────────────────────┤
+│ Free Space                                          │
+├─────────────────────────────────────────────────────┤
+│ Record Space (grows ←)                              │
+│ ... [ tuple 2 ] [ tuple 1 ] [ tuple 0 ]             │
+└─────────────────────────────────────────────────────┘
+      │               │                    │
+HeapHeaderRef<'a>  LinePtrArray<'a>  HeapRecordSpace<'a>
+      │               │                    │
+      └───────────────┴────────────────────┘
+                      │
+                 HeapPage<'a>  ←─────────────────────────┐
+                                                         │
+                                                  built from
+                                                         │
+                                            HeapPageView<'a>
+                                          ┌──────────────────────────┐
+                                          │ guard: PageReadGuard<'a> │
+                                          │ layout: &'a Layout       │
+                                          └──────────────────────────┘
+                                                   │
+                                            owns the lock on
+                                                   │
+                                            PageBytes in BufferFrame
+```
+{: .ascii-art}
 
-## 3. Zero-copy from disk: O_DIRECT + io_uring
+I want to talk a little bit about the design here because I think it really helps to build a mental model of Rust references and lifetimes.
 
-## 4. Zero-copy from buffer pool to caller: the guard and view types
+The structure here is odd because naturally you'd imagine that `HeapPage` would store the guard to keep the page pinned and `HeapPageView` would store the pointers into the bytes themselves since this gives you a natural stacking of abstractions. Or, even better, get rid of `HeapPageView` and store the guard and the pointers within `HeapPage`.
 
-## 5. How Rust makes this structurally correct
+```rust
+struct HeapPage<'a> {
+    guard: PageReadGuard <'a>,
+    header: HeapHeaderRef<'a>, // borrows from guard
+    line_pointers: LinePtrArray<'a>, // borrows from guard
+    record_space: HeapRecordSpace<'a>, // borrows from guard
+}
+```
 
-## 6. What's not zero-copy (honest caveats)
+This leads us to the classic [self-referential struct](https://quinedot.github.io/rust-learning/pf-meta.html) issue in Rust, which makes pointer invalidation very hard. Imagine for a moment, you have a struct and it has two fields - A and B, with B pointing to A. Now, your struct A moves. What does B point to? It's going to continue pointing to where A was but that's invalid and would lead to UB. There are ways around this in Rust with [`Pin`](https://without.boats/blog/pin/), unsafe raw pointers, `Arc` pointers and external crates like `ouroboros`. But, all of these have overhead associated with them.
+
+A simpler resolution is to restructure the code to avoid self-references entirely. We have `HeapPage` which has pointers into `PageBytes` and we have `HeapPageView` which stores the actual bytes.
+
+ But, where's the link between them?
+
+```rust
+impl<'a> HeapPageView<'a> {
+    fn build_page(&'a self) -> HeapPage<'a> {
+        HeapPage::new(self.guard.bytes()).unwrap()
+    }
+
+    pub fn row(&self, slot: SlotId) -> Option<LogicalRow<'_>> {
+        let view = self.build_page();
+        let mut current = slot;
+        loop {
+            match view.tuple_ref(current)? {
+                //  code elided for simplicity
+            }
+        }
+    }
+}
+
+impl<'a> HeapPage<'a> {
+    fn new(bytes: &'a [u8]) -> SimpleDBResult<Self> {
+        // Use shared parsing logic from PageKind trait
+        let layout = Self::parse_layout(bytes)?;
+
+        let header = HeapHeaderRef::new(layout.header);
+
+        // Additional heap-specific validation
+        let free_upper = header.free_upper() as usize;
+        let page_size = PAGE_SIZE_BYTES as usize;
+        if free_upper < header.free_lower() as usize || free_upper > page_size {
+            return Err("heap page free_upper out of bounds".into());
+        }
+
+        let page = Self::from_parts(header, layout.line_ptrs, layout.records, layout.base_offset);
+        assert_eq!(
+            page.slot_count(),
+            header.slot_count() as usize,
+            "slot directory length must match header slot_count"
+        );
+        Ok(page)
+    }
+}
+```
+
+When the query layer wants to read something from the data pages, it will get a `HeapPageView` and any operation on the `HeapPageView` that requires access to some logical segment of data will construct a `HeapPage` which understands how the bytes on the page are laid out.
+
+Now, you're probably wondering about the cost of reconstructing the `HeapPage` each time. It's actually really cheap because it's composed entirely of arithmetic operations sprinkled with a few panics in case some invariants aren't met. And arithmetic operations are *extremely* cheap for the CPU to perform, especially when compared to `memcpy()` operations.
+
+| ![](/assets/img/zero-copy/cpu_ops_cost.png) |
+|:--:|
+| *Not all CPU operations are created equal. Source: [ithare.com](https://ithare.com/infographics-operation-costs-in-cpu-clock-cycles/), via Andrew Kelley's [talk on Data Oriented Design](https://youtu.be/IroPQ150F6c?t=409)* |
+
+Another way to structure the above references would have been to store the guard on the `HeapPage` and have the `HeapPageView` construct the slices into the page bytes.
+
+```rust
+pub struct HeapPage<'a> {
+    guard: PageReadGuard<'a>,
+}
+
+pub struct HeapPageView<'a> {
+    header: HeapHeaderRef<'a>,
+    line_pointers: LinePtrArray<'a>,
+    record_space: HeapRecordSpace<'a>,
+    layout: &'a Layout,
+}
+
+let page = HeapPage::new(guard);
+let view = HeapPageView::new(&'a page, layout); // borrows from page and page stays alive on stack
+```
+
+This works but runs into an issue when we want to mutate the bytes. Imagine that we want to insert a record into the heap page. This requires mutating `record_space` and also mutating `line_pointers`. Now, the bounds of both might have changed which means we have stale references in our struct. We need to drop the struct and re-create it again. While it is cheap, this still leaks abstractions into the upper query layers.
+
+A better form would be to do the following
+
+```rust
+pub struct HeapPage<'a> {
+    guard: PageReadGuard<'a>,
+}
+
+pub struct HeapPageView<'a> {
+    header: HeapHeaderRef<'a>,
+    body_bytes: &'a [u8],
+    layout: &'a Layout,
+}
+
+let page = HeapPage::new(guard);
+let view = HeapPageView::new(&'a page, layout); // borrows from page and page stays alive on stack
+```
+
+In slotted pages, the header size is fixed and anytime we want to perform some operation we re-parse the body bytes using information from the header and get an accurate view into the bytes.
+
+But, the above requires keeping the page and view alive on the stack and leaks implementation details up to the query layer. The version I went with makes those details opaque to the query layer.
+
+## Structuring Types In Rust
+
+In the previous section we saw `PageReadGuard`, `HeapPage` and `HeapPageView` which collectively constitute the read side path of the page. However, Rust has the principle of [aliasing XOR mutability](https://cmpt-479-982.github.io/week1/safety_features_of_rust.html#the-borrow-checker-and-the-aliasing-xor-mutability-principle) and this means that we either get multiple `&T` or a single `&mut T`. Everything we saw above is on the `&T` path and we need a `&mut T` path.
+
+```rust
+/// Write guard providing exclusive access to a pinned page.
+pub struct PageWriteGuard<'a> {
+    page: RwLockWriteGuard<'a, PageBytes>,
+}
+
+pub struct HeapPageMut<'a> {
+    header: HeapHeaderMut<'a>,
+    body_bytes: &'a mut [u8],
+}
+
+pub struct HeapPageViewMut<'a> {
+    guard: PageWriteGuard<'a>,
+    layout: &'a Layout,
+}
+
+impl<'a> HeapPageViewMut<'a> {
+    fn build_mut_page(&mut self) -> SimpleDBResult<HeapPageMut<'_>> {
+        HeapPageMut::new(self.guard.bytes_mut())
+    }
+
+    pub fn insert_tuple(&mut self, tuple: &[u8]) -> SimpleDBResult<SlotId> {
+        let mut page = self.build_mut_page()?;
+        page.insert(tuple)
+    }
+}
+```
+
+Now, we abide by Rust's aliasing rules and if we have a `BufferFrame`, we can either acquire the `read` latch multiple times and build the read path or acquire the `write` latch and build the write path.
+
+```
+                    BufferFrame
+                    RwLock<PageBytes>
+                         │
+              ┌──────────┴──────────┐
+              │                     │
+         read_page()           write_page()
+              │                     │
+    RwLockReadGuard          RwLockWriteGuard
+    (shared, N readers)      (exclusive, 1 writer)
+              │                     │
+       PageReadGuard           PageWriteGuard
+           &'a [u8]               &'a mut [u8]
+              │                     │
+         HeapPage              HeapPageMut
+       (borrows &[u8])        (borrows &mut [u8])
+              │                     │
+       HeapPageView          HeapPageViewMut
+```
+{: .ascii-art}
+
+And, of course, Rust's borrow checker makes use-after-unpin a compile error, not a runtime hazard.
+
+There's one more asymmetry worth noting. `HeapPage` splits the bytes into three fields (header, line pointers, record space) because reads are idempotent and those boundaries never shift. 
+
+`HeapPageMut` can't do the same: a single insert moves both `free_lower` and `free_upper`, making any pre-split reference immediately stale. So `HeapPageMut` keeps a single `body_bytes: &mut [u8]` and re-derives sub-regions from the header on each operation. Rust prevents aliased mutable access, but the deeper invariant (that split points must always match the header) has to be enforced through design.
+
+### The Cost Of Safe Abstractions
+
+The split into separate read and write types has a real ergonomic cost. `HeapPageViewMut` doesn't automatically get `HeapPageView`'s read methods. In Rust's standard library, `&mut Vec<T>` coerces to `&Vec<T>` automatically via `Deref`, so mutable references get all immutable methods for free.
+
+This only works because `Vec<T>` wraps around a single raw pointer. It then implements `Deref<Target=[T]>` and `DerefMut<Target=[T]>` to give you either a `&T` or `&mut T`.
+
+This works because `Vec<T>` is backed by a single raw pointer internally. From one pointer, the borrow checker decides at the call site whether you get `&[T]` or `&mut [T]` based on how you borrowed it. The unsafe is inside `Vec`, audited once, invisible to callers.
+
+```rust
+pub struct Vec<T, #[unstable(feature = "allocator_api", issue = "32838")] A: Allocator = Global> {
+    buf: RawVec<T, A>,
+    len: usize,
+}
+
+#[stable(feature = "rust1", since = "1.0.0")]
+impl<T, A: Allocator> ops::Deref for Vec<T, A> {
+    type Target = [T];
+
+    #[inline]
+    fn deref(&self) -> &[T] {
+        self.as_slice()
+    }
+}
+
+pub const fn as_slice(&self) -> &[T] {
+    unsafe { slice::from_raw_parts(self.as_ptr(), self.len) }
+}
+```
+
+Our design can't do this. `PageReadGuard` and `PageWriteGuard` hold fundamentally different types — `RwLockReadGuard` and `RwLockWriteGuard` — that can't be unified into a single raw pointer. The `RwLock` enforces the read/write distinction at runtime, so it has to be reflected as two distinct types at compile time. Any read method you want on `HeapPageViewMut` has to be written explicitly.
+
+This is the tradeoff in Rust API design. No `unsafe` and clear separation of capabilities but you pay for it in ergonomics that unsafe-backed types get for free.
+
+## Compile-Time Polymorphism
+
+So far we've looked at `HeapPage` as a single concrete type. But a database engine has multiple page types — heap pages for table rows, B-tree leaf pages for index entries, B-tree internal pages for separator keys. If you look at their structure, they're nearly identical:
+
+```rust
+struct HeapPage<'a> {
+    header: HeapHeaderRef<'a>,
+    line_pointers: LinePtrArray<'a>,
+    record_space: HeapRecordSpace<'a>,
+}
+
+struct BTreeLeafPage<'a> {
+    header: BTreeLeafHeaderRef<'a>,
+    line_pointers: LinePtrArray<'a>,  // duplicated
+    record_space: BTreeRecordSpace<'a>,
+}
+
+struct BTreeInternalPage<'a> {
+    header: BTreeInternalHeaderRef<'a>,
+    line_pointers: LinePtrArray<'a>,  // duplicated again
+    record_space: BTreeRecordSpace<'a>,
+}
+```
+
+The shared logic — slot allocation, compaction, free space management — is implemented separately for each, which means bugs get fixed in triplicate and the implementations can drift.
+
+The natural Rust solution is compile-time polymorphism via zero-sized marker types and generics.
+
+### Zero-Sized Markers
+
+```rust
+pub struct Heap;
+pub struct BTreeLeaf;
+pub struct BTreeInternal;
+```
+
+These are empty structs — `std::mem::size_of::<Heap>() == 0`. They exist only at compile time to carry type information. No runtime representation, no cost.
+
+### The PageKind Trait
+
+```rust
+pub trait PageKind: Sized {
+    const PAGE_TYPE: PageType;
+    const HEADER_SIZE: usize;
+
+    type HeaderRef<'a>: HeaderReader<'a>;
+    type HeaderMut<'a>: HeaderHelpers;
+
+    fn is_slot_live(lp: &LinePtr) -> bool;
+    fn init_slot(ptrs: &mut LinePtrArrayMut, slot: SlotId, offset: u16, size: u16);
+    fn delete_slot_impl<'a>(parts: &mut PageParts<'a, Self>, slot: SlotId) -> SimpleDBResult<()>;
+}
+```
+
+Each marker implements `PageKind` with its concrete header type and type-specific behavior. For example, heap pages use a freelist for deleted slots while B-tree pages physically remove them — that difference lives in `delete_slot_impl`.
+
+### One Generic Struct
+
+```rust
+pub struct Page<'a, K: PageKind> {
+    header: K::HeaderRef<'a>,
+    line_pointers: LinePtrArray<'a>,
+    record_space: RecordSpace<'a>,
+    _marker: PhantomData<K>,
+}
+```
+
+Shared logic is implemented once on `impl<K: PageKind> Page<'a, K>`. Type-specific methods go on specialized impls:
+
+```rust
+// Only available on heap pages
+impl<'a> Page<'a, Heap> {
+    pub fn tuple_ref(&self, slot: SlotId) -> Option<TupleRef<'a>> { ... }
+}
+
+// Only available on B-tree leaf pages
+impl<'a> Page<'a, BTreeLeaf> {
+    pub fn find_slot(&self, key: &[u8]) -> Result<usize, usize> { ... }
+}
+```
+
+Calling `tuple_ref()` on a `Page<BTreeLeaf>` is a compile error. The type system enforces page-type-specific operations at zero runtime cost, so no vtables and no dynamic dispatch. The compiler monomorphizes each instantiation into code identical to the hand-written concrete types.
+
+Type aliases preserve the existing API:
+
+```rust
+pub type HeapPage<'a> = Page<'a, Heap>;
+pub type BTreeLeafPage<'a> = Page<'a, BTreeLeaf>;
+pub type BTreeInternalPage<'a> = Page<'a, BTreeInternal>;
+```
+
+### Why I Didn't Implement It
+
+The abstraction assumes all pages use slotted layout with a header, line pointers and record space. That holds for heap and B-tree pages, but breaks for meta pages (just fixed header fields), WAL pages (boundary-pointer format), and free pages. Forcing those into the generic would require multiple parallel hierarchies, adding complexity that outweighed the benefit for this codebase.
+
+I still think it's a great idea to explore further and compile-time polymorphism is one of those zero-cost abstractions that make Rust so great to use.
+
+{% include footnotes.html notes="This assumes 64-bit DMA capable hardware. On systems with 32-bit DMA devices or confidential computing VMs (AMD SEV, Intel TDX), the kernel may silently introduce a SWIOTLB bounce buffer, reintroducing a CPU copy. See the Linux kernel docs on <a href='https://docs.kernel.org/core-api/swiotlb.html'>swiotlb</a>." %}
