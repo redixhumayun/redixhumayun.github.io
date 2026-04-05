@@ -394,9 +394,9 @@ Now, we abide by Rust's aliasing rules and if we have a `BufferFrame`, we can ei
            &'a [u8]               &'a mut [u8]
               │                     │
          HeapPage              HeapPageMut
-       (borrows &[u8])        (borrows &mut [u8])
+       (borrows &'a [u8])        (borrows &'a mut [u8])
               │                     │
-       HeapPageView          HeapPageViewMut
+       HeapPageView<'a>         HeapPageViewMut<'a>
 ```
 {: .ascii-art}
 
@@ -405,6 +405,69 @@ And, of course, Rust's borrow checker makes use-after-unpin a compile error, not
 There's one more asymmetry worth noting. `HeapPage` splits the bytes into three fields (header, line pointers, record space) because reads are idempotent and those boundaries never shift. 
 
 `HeapPageMut` can't do the same: a single insert moves both `free_lower` and `free_upper`, making any pre-split reference immediately stale. So `HeapPageMut` keeps a single `body_bytes: &mut [u8]` and re-derives sub-regions from the header on each operation. Rust prevents aliased mutable access, but the deeper invariant (that split points must always match the header) has to be enforced through design.
+
+### Nested Borrows
+
+If you've noticed, so far we've been using only a single lifetime of `'a`, which makes sense because we've been borrowing everything from the same set of underlying bytes.
+
+But, we've actually been imprecise and let the compiler handle some of the drudgery for us. The chain of borrows so far has been `PageBytes` => `RwLock*Guard<'a, T>` => `Page*Guard<'a, T>` => `HeapPage[Mut]<'a, T>` => `HeapPageView[Mut]<'a, T>`
+
+Each successive borrow nests wtihin the previous one but the compiler allows us to do all of this with a single lifetime because of [lifetime variance](https://doc.rust-lang.org/nomicon/subtyping.html).
+
+The crux of lifetime variance is that shared references are covariant and exclusive references are invariant. Another way this is frequently expressed is that `&T` is covariant over `'a` and `&mut T` is invariant over `'a`.
+
+For covariant lifetimes, Rust can shorten a longer-lived `&T` into a shorter-lived `&T` when needed, which allows us to elide the nested lifetimes and let the compiler infer the intermediate lifetimes for us.
+
+Mutable borrows are less forgiving because mutation makes those coercions much stricter. With `&mut T`, Rust can't be as flexible about the inner lifetime without risking that a shorter-lived reference gets written into a place that promised to hold a longer-lived one.
+
+The place where this finally becomes visible in the code is `HeapPageViewMut::row_mut()` and its construction:
+
+```rust
+pub struct LogicalRowMut<'row, 'page: 'row> {
+    view: &'row mut HeapPageViewMut<'page>,
+}
+
+impl<'a> HeapPageViewMut<'a> {
+    /// Decodes the live tuple at `slot` into a `LogicalRowMut` for editing.
+    /// Changes are written back to the page automatically when the returned value is dropped.
+    pub fn row_mut<'row>(
+        &'row mut self,
+        slot: SlotId,
+    ) -> SimpleDBResult<Option<LogicalRowMut<'row, 'a>>> {
+        //  code elided for simplicity
+        Ok(Some(LogicalRowMut {
+            view: self,
+            slot,
+            values,
+            layout,
+            dirty: false,
+        }))
+    }
+}
+```
+
+`'page` is the lifetime of the underlying page view, which already borrows the pinned page bytes. `'row` is the shorter lifetime of one exclusive edit session on top of that view. The relation `'page: 'row` says exactly what we need - the page view has to stay valid for at least as long as the mutable row editor borrowing it.
+
+```
+Page bytes in BufferFrame
+┌─────────────────────────────────────────────────────────────┐
+│ header │ line pointers │ free space │ tuple 2 │ tuple 1 │… │
+└─────────────────────────────────────────────────────────────┘
+<---------------------- borrowed for 'page ---------------------->
+
+                                 one call to row_mut()
+                                            │
+                                            ▼
+
+                       LogicalRowMut<'row, 'page>
+                       ┌─────────────────────────┐
+                       │ edits one logical row   │
+                       └─────────────────────────┘
+                       <---- borrowed for 'row --->
+
+Constraint: 'page : 'row
+```
+{: .ascii-art}
 
 ### The Cost Of Safe Abstractions
 
@@ -437,33 +500,33 @@ pub const fn as_slice(&self) -> &[T] {
 
 Our design can't do this. `PageReadGuard` and `PageWriteGuard` hold fundamentally different types — `RwLockReadGuard` and `RwLockWriteGuard` — that can't be unified into a single raw pointer. The `RwLock` enforces the read/write distinction at runtime, so it has to be reflected as two distinct types at compile time. Any read method you want on `HeapPageViewMut` has to be written explicitly.
 
-This is the tradeoff in Rust API design. No `unsafe` and clear separation of capabilities but you pay for it in ergonomics that unsafe-backed types get for free.
+This is the tradeoff in Rust API design. There is no `unsafe` and a clear separation of capabilities but ergonomics aren't as nice as unsafe-backed types get for free.
 
 ## Compile-Time Polymorphism
 
-So far we've looked at `HeapPage` as a single concrete type. But a database engine has multiple page types — heap pages for table rows, B-tree leaf pages for index entries, B-tree internal pages for separator keys. If you look at their structure, they're nearly identical:
+So far we've looked at `HeapPage` as a single concrete type. Now, let's look at more pages like B-tree leaf pages and B-tree internal pages. If you look at their structure, they're almost identical.
 
 ```rust
 struct HeapPage<'a> {
     header: HeapHeaderRef<'a>,
-    line_pointers: LinePtrArray<'a>,
-    record_space: HeapRecordSpace<'a>,
+    line_pointers: LinePtrArray<'a>, // duplicated
+    record_space: HeapRecordSpace<'a>, // similar semantics
 }
 
 struct BTreeLeafPage<'a> {
     header: BTreeLeafHeaderRef<'a>,
     line_pointers: LinePtrArray<'a>,  // duplicated
-    record_space: BTreeRecordSpace<'a>,
+    record_space: BTreeRecordSpace<'a>, // similar semantics
 }
 
 struct BTreeInternalPage<'a> {
     header: BTreeInternalHeaderRef<'a>,
     line_pointers: LinePtrArray<'a>,  // duplicated again
-    record_space: BTreeRecordSpace<'a>,
+    record_space: BTreeRecordSpace<'a>, // similar semantics
 }
 ```
 
-The shared logic — slot allocation, compaction, free space management — is implemented separately for each, which means bugs get fixed in triplicate and the implementations can drift.
+The shared logic of slot allocation, compaction, free space management etc. is implemented separately for each which means bugs have to get fixed in triplicate and implementations can drift.
 
 The natural Rust solution is compile-time polymorphism via zero-sized marker types and generics.
 
@@ -475,7 +538,7 @@ pub struct BTreeLeaf;
 pub struct BTreeInternal;
 ```
 
-These are empty structs — `std::mem::size_of::<Heap>() == 0`. They exist only at compile time to carry type information. No runtime representation, no cost.
+These are empty structs, `std::mem::size_of::<Heap>() == 0`. They exist only at compile time to carry type information. No runtime representation, no cost.
 
 ### The PageKind Trait
 
