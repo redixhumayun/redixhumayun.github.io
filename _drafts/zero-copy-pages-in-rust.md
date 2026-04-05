@@ -105,9 +105,13 @@ Policy: A way to decide which page to evict (eviction policy)
 ```
 {: .ascii-art}
 
-Choosing the right policy for your system depends on the characteristics of your workload but most systems typically go with [CLOCK](https://www.geeksforgeeks.org/operating-systems/second-chance-or-clock-page-replacement-policy/) which is an LRU approximation. [Here's](https://en.wikipedia.org/wiki/Cache_replacement_policies) a non-exhaustive list of replacement policies used in buffer pools.
+Choosing the right policy for your system depends on the characteristics of your workload, but CLOCK is a common choice because it approximates LRU at lower cost.
+
+Choosing the right policy for your system depends on the characteristics of your workload but most systems typically go with [CLOCK](https://www.cs.cornell.edu/courses/cs4410/2018su/lectures/lec15-thrashing.html) which is an LRU approximation. [Here's](https://en.wikipedia.org/wiki/Cache_replacement_policies) a non-exhaustive list of replacement policies used in buffer pools.
 
 ## Removing Copies From Above The Buffer Pool
+
+So far, zero-copy has meant removing copies between the kernel and the buffer pool. From here on, I'm going to broaden it slightly to mean removing redundant copies inside the engine too.
 
 Rust has a great and terrible way to avoid dealing with copies of data - references. It's great because it's a single character(&), it's terrible because now we have to learn to deal with [lifetimes](https://doc.rust-lang.org/rust-by-example/scope/lifetime.html).
 
