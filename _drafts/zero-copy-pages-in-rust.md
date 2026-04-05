@@ -55,7 +55,7 @@ Now, let's focus on eliminating copies at the layer between the buffer pool and 
 
 The buffer pool opens and stores file descriptors with the `open()` syscall. When we call `read()` and `write()` on those file descriptors it goes through the whole cycle you saw earlier with copies between userspace, kernel and DMA.
 
-An easy win here is to use direct IO with the [O_DIRECT](https://man7.org/linux/man-pages/man2/open.2.html) flag{% include sidenote.html id="sn-1" text="A large number of modern databases use this approach, although there are holdouts like Postgres." %}. This will force the application to bypass the OS page cache{% include footnote.html id="1" %}.
+An easy win here is to use direct IO with the [O_DIRECT](https://man7.org/linux/man-pages/man2/open.2.html) flag{% include sidenote.html id="sn-1" text="A large number of modern databases use this approach, although there are holdouts like Postgres." %}. This will force the application to bypass the OS page cache{% include sidenote.html id="sn-swiotlb" text="This assumes 64-bit DMA capable hardware. On systems with 32-bit DMA devices or confidential computing VMs (AMD SEV, Intel TDX), the kernel may silently introduce a SWIOTLB bounce buffer, reintroducing a CPU copy. See the Linux kernel docs on <a href='https://docs.kernel.org/core-api/swiotlb.html'>swiotlb</a>." %}.
 
 `O_DIRECT` requires that the buffers submitted are pointer aligned, along with I/O length and file offset. In Rust, we guarantee the former with `#[repr(align(4096))]` on the buffer holding our page, and 4 KiB page-sized reads and writes at page-aligned offsets satisfy the rest. Without this, `O_DIRECT` reads or writes would often fail with `EINVAL`{% include sidenote.html id="sn-einval" text="Here's a <a href='https://gist.github.com/redixhumayun/8f402d30ffc8437e043394b9c003698b'>gist</a> showing this in C — the first program uses malloc (not 4096-aligned) and the write fails, the second uses posix_memalign and succeeds." %}.
 
@@ -599,4 +599,3 @@ The abstraction assumes all pages use slotted layout with a header, line pointer
 
 I still think it's a great idea to explore further and compile-time polymorphism is one of those zero-cost abstractions that make Rust so great to use.
 
-{% include footnotes.html notes="This assumes 64-bit DMA capable hardware. On systems with 32-bit DMA devices or confidential computing VMs (AMD SEV, Intel TDX), the kernel may silently introduce a SWIOTLB bounce buffer, reintroducing a CPU copy. See the Linux kernel docs on <a href='https://docs.kernel.org/core-api/swiotlb.html'>swiotlb</a>." %}
