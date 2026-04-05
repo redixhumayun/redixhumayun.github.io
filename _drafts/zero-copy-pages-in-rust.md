@@ -105,8 +105,6 @@ Policy: A way to decide which page to evict (eviction policy)
 ```
 {: .ascii-art}
 
-Choosing the right policy for your system depends on the characteristics of your workload, but CLOCK is a common choice because it approximates LRU at lower cost.
-
 Choosing the right policy for your system depends on the characteristics of your workload but most systems typically go with [CLOCK](https://www.cs.cornell.edu/courses/cs4410/2018su/lectures/lec15-thrashing.html) which is an LRU approximation. [Here's](https://en.wikipedia.org/wiki/Cache_replacement_policies) a non-exhaustive list of replacement policies used in buffer pools.
 
 ## Removing Copies From Above The Buffer Pool
