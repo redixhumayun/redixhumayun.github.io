@@ -158,6 +158,12 @@ With this lifetime annotation, we are proving to the compiler that `PageReadGuar
 
 In the real implementation, the field is `RwLockReadGuard<'a, PageBytes>` rather than `&'a PageBytes`, but the ownership story is the same: the guard borrows the page bytes instead of owning them, and our wrapper carries that borrow forward.
 
+```rust
+pub struct PageReadGuard<'a> {
+    page: RwLockReadGuard<'a, PageBytes>
+}
+```
+
 Typical database engines have two core page types - heap and btree pages. So let's introduce the former with two data structures in our engine - `HeapPage` and `HeapPageView` . The structure of the page is going to be a standard [slotted page](https://siemens.blog/posts/database-page-layout/) layout.
 
 A slotted page is divided into the header, the line pointers and the record space, so we'll create a struct for each and store all these references in our `HeapPage`.
@@ -320,7 +326,7 @@ let page = HeapPage::new(guard);
 let view = HeapPageView::new(&'a page, layout); // borrows from page and page stays alive on stack
 ```
 
-This works but runs into an issue when we want to mutate the bytes. Imagine that we want to insert a record into the heap page. This requires mutating `record_space` and also mutating `line_pointers`. Now, the bounds of both might have changed which means we have stale references in our struct. We need to drop the struct and re-create it again. While it is cheap, this still leaks abstractions into the upper query layers.
+This works but runs into an issue when we want to mutate the bytes. Imagine that we want to insert a record into the heap page. This requires mutating `record_space` and also mutating `line_pointers`. Now, the bounds of both might have changed which means we have stale references in our struct. We need to drop the struct and re-create it again. While it is cheap, it's a [leaky abstraction](https://www.joelonsoftware.com/2002/11/11/the-law-of-leaky-abstractions/).
 
 A better form would be to do the following
 
@@ -402,13 +408,18 @@ And, of course, Rust's borrow checker makes use-after-unpin a compile error, not
 
 There's one more asymmetry worth noting. `HeapPage` splits the bytes into three fields (header, line pointers, record space) because reads are idempotent and those boundaries never shift. 
 
-`HeapPageMut` can't do the same: a single insert moves both `free_lower` and `free_upper`, making any pre-split reference immediately stale. So `HeapPageMut` keeps a single `body_bytes: &mut [u8]` and re-derives sub-regions from the header on each operation. Rust prevents aliased mutable access, but the deeper invariant (that split points must always match the header) has to be enforced through design.
+`HeapPageMut` can't do the same: a single insert moves both `free_lower` and `free_upper`, making any pre-split reference immediately stale. So `HeapPageMut` keeps a single `body_bytes: &mut [u8]` and re-derives sub-regions from the header on each operation. Rust prevents aliased mutable access, but the deeper invariant that split points must always match the header has to be enforced through design.
 
 ### Nested Borrows
 
 If you've noticed, so far we've been using only a single lifetime of `'a`, which makes sense because we've been borrowing everything from the same set of underlying bytes.
 
-But, we've actually been imprecise and let the compiler handle some of the drudgery for us. The chain of borrows so far has been `PageBytes` => `RwLock*Guard<'a, T>` => `Page*Guard<'a, T>` => `HeapPage[Mut]<'a, T>` => `HeapPageView[Mut]<'a, T>`
+But, we've actually been imprecise and let the compiler handle some of the drudgery for us. The chain of borrows so far has been:
+
+```
+PageBytes  →  RwLock{Read,Write}Guard<'a>  →  Page{Read,Write}Guard<'a>  →  HeapPage[Mut]<'a>  →  HeapPageView[Mut]<'a>
+```
+{: .ascii-art}
 
 Each successive borrow nests wtihin the previous one but the compiler allows us to do all of this with a single lifetime because of [lifetime variance](https://doc.rust-lang.org/nomicon/subtyping.html).
 
@@ -418,7 +429,7 @@ For covariant lifetimes, Rust can shorten a longer-lived `&T` into a shorter-liv
 
 Mutable borrows are less forgiving because mutation makes those coercions much stricter. With `&mut T`, Rust can't be as flexible about the inner lifetime without risking that a shorter-lived reference gets written into a place that promised to hold a longer-lived one.
 
-The place where this finally becomes visible in the code is `HeapPageViewMut::row_mut()` and its construction:
+The place where this finally becomes visible in the code is `HeapPageViewMut::row_mut()` and the construction of `LogicalRowMut`:
 
 ```rust
 pub struct LogicalRowMut<'row, 'page: 'row> {
@@ -444,7 +455,7 @@ impl<'a> HeapPageViewMut<'a> {
 }
 ```
 
-`'page` is the lifetime of the underlying page view, which already borrows the pinned page bytes. `'row` is the shorter lifetime of one exclusive edit session on top of that view. The relation `'page: 'row` says exactly what we need - the page view has to stay valid for at least as long as the mutable row editor borrowing it.
+`'page` is the lifetime of the underlying page view, which already borrows the pinned page bytes. `'row` is the shorter lifetime of one exclusive edit session on top of that view. The relation `'page: 'row` says that the page view has to stay valid for at least as long as the mutable row editor borrowing it.
 
 ```
 Page bytes in BufferFrame
@@ -498,7 +509,7 @@ pub const fn as_slice(&self) -> &[T] {
 
 Our design can't do this. `PageReadGuard` and `PageWriteGuard` hold fundamentally different types — `RwLockReadGuard` and `RwLockWriteGuard` — that can't be unified into a single raw pointer. The `RwLock` enforces the read/write distinction at runtime, so it has to be reflected as two distinct types at compile time. Any read method you want on `HeapPageViewMut` has to be written explicitly.
 
-This is the tradeoff in Rust API design. There is no `unsafe` and a clear separation of capabilities but ergonomics aren't as nice as unsafe-backed types get for free.
+This is the tradeoff in Rust API design. There is no `unsafe` and a clear separation of capabilities but ergonomics aren't as nice as the ones unsafe-backed types get for free.
 
 ## Compile-Time Polymorphism
 
@@ -554,7 +565,7 @@ pub trait PageKind: Sized {
 }
 ```
 
-Each marker implements `PageKind` with its concrete header type and type-specific behavior. For example, heap pages use a freelist for deleted slots while B-tree pages physically remove them — that difference lives in `delete_slot_impl`.
+Each marker implements `PageKind` with its concrete header type and type-specific behavior. For example, heap pages use a freelist for deleted slots while B-tree pages physically remove them with the logic living in `delete_slot_impl`.
 
 ### One Generic Struct
 
@@ -595,10 +606,10 @@ pub type BTreeInternalPage<'a> = Page<'a, BTreeInternal>;
 
 The abstraction assumes all pages use slotted layout with a header, line pointers and record space. That holds for heap and B-tree pages, but breaks for meta pages (just fixed header fields), WAL pages (boundary-pointer format), and free pages. Forcing those into the generic would require multiple parallel hierarchies, adding complexity that outweighed the benefit for this codebase.
 
-I still think it's a great idea to explore further and compile-time polymorphism is one of those zero-cost abstractions that make Rust so great to use.
+It still feels like a great idea to explore further and compile-time polymorphism is one of those zero-cost abstractions that make Rust so great to use.
 
 ## Why This Tradeoff Was Worth It
 
 To me, the interesting part of this design is that it moves ownership into one place, the buffer pool. Everything above that is about views over the same set of bytes.
 
-This comes at the price of API ergonomics though. I had to structure the zero-copy page access so that the compiler can see the same invariants I care about. It litters the code with lifetime annotations, yes, but it eliminates a certain class of bugs while providing performance gains.
+This comes at the price of API ergonomics though. I had to structure the zero-copy page access so that the compiler can see the same invariants I care about. While it litters the code with lifetime annotations it eliminates a certain class of bugs and provides performance gains.
