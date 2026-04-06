@@ -597,3 +597,8 @@ The abstraction assumes all pages use slotted layout with a header, line pointer
 
 I still think it's a great idea to explore further and compile-time polymorphism is one of those zero-cost abstractions that make Rust so great to use.
 
+## Why This Tradeoff Was Worth It
+
+To me, the interesting part of this design is that it moves ownership into one place, the buffer pool. Everything above that is about views over the same set of bytes.
+
+This comes at the price of API ergonomics though. I had to structure the zero-copy page access so that the compiler can see the same invariants I care about. It litters the code with lifetime annotations, yes, but it eliminates a certain class of bugs while providing performance gains.
