@@ -4,6 +4,8 @@ title: "Zero-Copy Pages in Rust: Or How I Learned To Stop Worrying And Love Life
 category: databases
 ---
 
+*You can find the source code for the project [here](https://github.com/redixhumayun/simpledb/)*
+
 Zero-copy is a way to elide CPU copies between the kernel and user space buffers that is particularly useful in high throughput applications like database engines. It makes a huge difference in performance under high load, particularly when your working set is no longer cache resident.
 
 ## What Is Zero-Copy
@@ -132,7 +134,7 @@ pub struct BufferFrame {
 }
 ```
 
-Now, we're going to store this frame inside a `PageReadGuard`.
+Now, we're going to store this frame's data inside a `PageReadGuard`.
 
 ```rust
 // To keep the example small, the next type is schematic rather than literal.
@@ -429,7 +431,35 @@ For covariant lifetimes, Rust can shorten a longer-lived `&T` into a shorter-liv
 
 Mutable borrows are less forgiving because mutation makes those coercions much stricter. With `&mut T`, Rust can't be as flexible about the inner lifetime without risking that a shorter-lived reference gets written into a place that promised to hold a longer-lived one.
 
-The place where this finally becomes visible in the code is `HeapPageViewMut::row_mut()` and the construction of `LogicalRowMut`:
+Here's a concrete example that demonstrates the asymmetry. We define a struct with two lifetimes and try to shorten one in a function:
+
+```rust
+struct Inner<'a> {
+    data: &'a [u8],
+}
+
+struct Outer<'short, 'long> {
+    inner: &'short Inner<'long>,
+}
+
+fn shorten<'long, 'short>(outer: Outer<'short, 'long>) -> Outer<'short, 'short> { outer }
+```
+
+This compiles because `&T` is covariant over `'long`. The function can coerce a reference where the data outlives the borrow.
+
+Now, change the outer reference to mutable:
+
+```rust
+struct Outer<'short, 'long> {
+    inner: &'short mut Inner<'long>,
+}
+
+fn shorten<'long, 'short>(outer: Outer<'short, 'long>) -> Outer<'short, 'short> { outer }
+```
+
+This fails to compile. `&mut T` is invariant over its lifetime parameter — it cannot be shortened even when the data outlives the borrow. The lifetimes must match exactly.
+
+This is exactly what happens in `HeapPageViewMut::row_mut()` and the construction of `LogicalRowMut`:
 
 ```rust
 pub struct LogicalRowMut<'row, 'page: 'row> {
@@ -608,7 +638,7 @@ The abstraction assumes all pages use slotted layout with a header, line pointer
 
 It still feels like a great idea to explore further and compile-time polymorphism is one of those zero-cost abstractions that make Rust so great to use.
 
-## Why This Tradeoff Was Worth It
+## Conclusion
 
 To me, the interesting part of this design is that it moves ownership into one place, the buffer pool. Everything above that is about views over the same set of bytes.
 
