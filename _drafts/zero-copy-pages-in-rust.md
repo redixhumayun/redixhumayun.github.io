@@ -109,6 +109,8 @@ Policy: A way to decide which page to evict (eviction policy)
 
 Choosing the right policy for your system depends on the characteristics of your workload but most systems typically go with [CLOCK](https://www.cs.cornell.edu/courses/cs4410/2018su/lectures/lec15-thrashing.html) which is an LRU approximation. [Here's](https://en.wikipedia.org/wiki/Cache_replacement_policies) a non-exhaustive list of replacement policies used in buffer pools.
 
+`O_DIRECT` removes the copy at the OS boundary. The next problem is avoiding fresh copies once the page is already in the buffer pool.
+
 ## Removing Copies From Above The Buffer Pool
 
 So far, zero-copy has meant removing copies between the kernel and the buffer pool. From here on, I'm going to broaden it slightly to mean removing redundant copies inside the engine too.
