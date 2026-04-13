@@ -111,7 +111,7 @@ Choosing the right policy for your system depends on the characteristics of your
 
 `O_DIRECT` removes the copy at the OS boundary. The next problem is avoiding fresh copies once the page is already in the buffer pool.
 
-## Removing Copies From Above The Buffer Pool
+## Eliminating Copies From The Read Path
 
 So far, zero-copy has meant removing copies between the kernel and the buffer pool. From here on, I'm going to broaden it slightly to mean removing redundant copies inside the engine too.
 
