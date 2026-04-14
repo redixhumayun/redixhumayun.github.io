@@ -115,11 +115,11 @@ Choosing the right policy for your system depends on the characteristics of your
 
 So far, zero-copy has meant removing copies between the kernel and the buffer pool. From here on, I'm going to broaden it slightly to mean removing redundant copies inside the engine too.
 
-Rust has a great and terrible way to avoid dealing with copies of data - references. It's great because it's a single character(&), it's terrible because now we have to learn to deal with [lifetimes](https://doc.rust-lang.org/rust-by-example/scope/lifetime.html).
+Rust has a great and terrible way to avoid dealing with copies of data - references. It's great because it's a single character (`&`), it's terrible because now we have to learn to deal with [lifetimes](https://doc.rust-lang.org/rust-by-example/scope/lifetime.html).
 
 The simplest way to think about lifetimes is that you are proving to the compiler that any reference held by type A will not outlive the data it points to.
 
-Let's start with defining the raw bytes for a single page like below
+Let's start with defining the raw bytes for a single page like this
 
 ```rust
 pub struct PageBytes {
@@ -226,7 +226,7 @@ In slotted pages, the header size is fixed and anytime we want to perform some o
 
 But, the above requires keeping the page and view alive on the stack and leaks implementation details up to the query layer. Once again, a [leaky abstraction](https://www.joelonsoftware.com/2002/11/11/the-law-of-leaky-abstractions/).
 
-The version I went with flips this around.{% include sidenote.html id="sn-indirection" text="The old computer science move: <a href='https://en.wikipedia.org/wiki/Fundamental_theorem_of_software_engineering'>\"Any problem in computer science can be solved with another level of indirection\"</a>." %} To make that concrete, a slotted page is divided into the header, the line pointers and the record space, so we'll create a struct for each and store all these references in our `HeapPage` and `HeapPageView` will store the `PageReadGuard`.
+The version I went with flips this around.{% include sidenote.html id="sn-indirection" text="The old computer science move: <a href='https://en.wikipedia.org/wiki/Fundamental_theorem_of_software_engineering'>\"Any problem in computer science can be solved with another level of indirection\"</a>." %} To make that concrete, a slotted page is divided into the header, the line pointers and the record space, so we'll store those parsed references in `HeapPage` and keep the `PageReadGuard` in `HeapPageView`.
 
 ```rust
 pub struct HeapHeaderRef<'a> {
@@ -423,7 +423,7 @@ PageBytes  →  RwLock{Read,Write}Guard<'a>  →  Page{Read,Write}Guard<'a>  →
 ```
 {: .ascii-art}
 
-Each successive borrow nests wtihin the previous one but the compiler allows us to do all of this with a single lifetime because of [lifetime variance](https://doc.rust-lang.org/nomicon/subtyping.html).
+Each successive borrow nests within the previous one but the compiler allows us to do all of this with a single lifetime because of [lifetime variance](https://doc.rust-lang.org/nomicon/subtyping.html).
 
 The crux of lifetime variance is that shared references are covariant and exclusive references are invariant. Another way this is frequently expressed is that `&T` is covariant over `'a` and `&mut T` is invariant over `'a`.
 
@@ -539,7 +539,7 @@ pub const fn as_slice(&self) -> &[T] {
 
 Our design can't do this. `PageReadGuard` and `PageWriteGuard` hold fundamentally different types — `RwLockReadGuard` and `RwLockWriteGuard` — that can't be unified into a single raw pointer. The `RwLock` enforces the read/write distinction at runtime, so it has to be reflected as two distinct types at compile time. Any read method you want on `HeapPageViewMut` has to be written explicitly.
 
-This is the tradeoff in Rust API design. There is no `unsafe` and a clear separation of capabilities but ergonomics aren't as nice as the ones unsafe-backed types get for free.
+This is the tradeoff in Rust API design. There is no `unsafe`, and there is a clear separation of capabilities, but the ergonomics aren't as nice as the ones unsafe-backed types get for free.
 
 ## Conclusion
 
