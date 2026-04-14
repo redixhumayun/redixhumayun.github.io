@@ -226,9 +226,7 @@ In slotted pages, the header size is fixed and anytime we want to perform some o
 
 But, the above requires keeping the page and view alive on the stack and leaks implementation details up to the query layer. Once again, a [leaky abstraction](https://www.joelonsoftware.com/2002/11/11/the-law-of-leaky-abstractions/).
 
-The version I went with flips this around. `HeapPageView` stores the guard and `HeapPage` is rebuilt on demand from borrowed bytes whenever we need to interpret the page layout.
-
-To make that concrete, a slotted page is divided into the header, the line pointers and the record space, so we'll create a struct for each and store all these references in our `HeapPage`.
+The version I went with flips this around.{% include sidenote.html id="sn-indirection" text="The old computer science move: <a href='https://en.wikipedia.org/wiki/Fundamental_theorem_of_software_engineering'>\"Any problem in computer science can be solved with another level of indirection\"</a>." %} To make that concrete, a slotted page is divided into the header, the line pointers and the record space, so we'll create a struct for each and store all these references in our `HeapPage` and `HeapPageView` will store the `PageReadGuard`.
 
 ```rust
 pub struct HeapHeaderRef<'a> {
@@ -516,7 +514,7 @@ The split into separate read and write types has a real ergonomic cost. `HeapPag
 
 This only works because `Vec<T>` wraps around a single raw pointer. It then implements `Deref<Target=[T]>` and `DerefMut<Target=[T]>` to give you either a `&T` or `&mut T`.
 
-This works because `Vec<T>` is backed by a single raw pointer internally. From one pointer, the borrow checker decides at the call site whether you get `&[T]` or `&mut [T]` based on how you borrowed it. The unsafe is inside `Vec`, audited once, invisible to callers.
+This works because `Vec<T>` is backed by a single raw pointer internally. From one pointer, the borrow checker decides at the call site whether you get `&[T]` or `&mut [T]` based on how you borrowed it. The unsafe is inside `Vec`, audited once and invisible to callers.
 
 ```rust
 pub struct Vec<T, #[unstable(feature = "allocator_api", issue = "32838")] A: Allocator = Global> {
