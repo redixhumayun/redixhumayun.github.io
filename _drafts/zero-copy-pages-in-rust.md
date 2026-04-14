@@ -10,7 +10,7 @@ Zero-copy is a way to elide CPU copies between the kernel and user space buffers
 
 ## What Is Zero-Copy
 
-Here is what a typical database engine looks like. For the purpose of this article, assume that every layer creates copies between them.
+Here is what a typical database engine looks like. For this post, focus on two copy boundaries: the OS boundary, and the path from the buffer pool into the layers above it.
 
 ```
   ┌─────────────────────────────────────────────────────────┐
@@ -28,11 +28,11 @@ Here is what a typical database engine looks like. For the purpose of this artic
   ┌──────────▼──────────┐       ┌────────────▼────────────┐
   │    Lock Manager     │       │      Log Manager        │
   └─────────────────────┘       └─────────────────────────┘
-                           │
+                           │  fresh copies into higher layers
   ┌────────────────────────▼────────────────────────────────┐
   │                    Buffer Pool                          │
   └────────────────────────┬────────────────────────────────┘
-                           │
+                           │  copy at OS boundary
   ┌────────────────────────▼────────────────────────────────┐
   │                    Disk                                 │
   └─────────────────────────────────────────────────────────┘
@@ -545,6 +545,35 @@ This is the tradeoff in Rust API design. There is no `unsafe` and a clear separa
 
 ## Conclusion
 
-To me, the interesting part of this design is that it moves ownership into one place, the buffer pool. Everything above that is about views over the same set of bytes.
+By the end, the path looks more like this:
 
-This comes at the price of API ergonomics though. I had to structure the zero-copy page access so that the compiler can see the same invariants I care about. While it litters the code with lifetime annotations it eliminates a certain class of bugs and provides performance gains.
+```
+  ┌─────────────────────────────────────────────────────────┐
+  │                      Query Layer                        │
+  └────────────────────────┬────────────────────────────────┘
+                           │
+  ┌────────────────────────▼────────────────────────────────┐
+  │                    Execution Engine                     │
+  └────────────────────────┬────────────────────────────────┘
+                           │
+  ┌────────────────────────▼────────────────────────────────┐
+  │                    Transaction Manager                  │
+  └──────────┬─────────────┴─────────────────┬──────────────┘
+             │                               │
+  ┌──────────▼──────────┐       ┌────────────▼────────────┐
+  │    Lock Manager     │       │      Log Manager        │
+  └─────────────────────┘       └─────────────────────────┘
+                           │  borrowed views over page bytes
+  ┌────────────────────────▼────────────────────────────────┐
+  │                    Buffer Pool                          │
+  └────────────────────────┬────────────────────────────────┘
+                           │  `O_DIRECT` removes this copy
+  ┌────────────────────────▼────────────────────────────────┐
+  │                    Disk                                 │
+  └─────────────────────────────────────────────────────────┘
+```
+{: .ascii-art}
+
+`O_DIRECT` removes the copy between disk and the buffer pool, and the page/view design removes fresh copies above the buffer pool by turning higher-level page objects into borrowed views over bytes that are already pinned in memory.
+
+To me, the interesting part of this design is that it moves ownership into one place, the buffer pool. Everything above that is about views over the same set of bytes. This comes at the price of API ergonomics though. I had to structure the zero-copy page access so that the compiler can see the same invariants I care about. While it litters the code with lifetime annotations it eliminates a certain class of bugs and avoids redundant data movement.
