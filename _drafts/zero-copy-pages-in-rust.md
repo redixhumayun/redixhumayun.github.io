@@ -353,7 +353,7 @@ Now, you're probably wondering about the cost of reconstructing the `HeapPage` e
 |:--:|
 | *Not all CPU operations are created equal. Source: [ithare.com](https://ithare.com/infographics-operation-costs-in-cpu-clock-cycles/), via Andrew Kelley's [talk on Data Oriented Design](https://youtu.be/IroPQ150F6c?t=409)* |
 
-## Structuring Types In Rust
+## Eliminating Copies From The Write Path
 
 In the previous section we saw `PageReadGuard`, `HeapPage` and `HeapPageView` which collectively constitute the read side path of the page. However, Rust has the principle of [aliasing XOR mutability](https://cmpt-479-982.github.io/week1/safety_features_of_rust.html#the-borrow-checker-and-the-aliasing-xor-mutability-principle) and this means that we either get multiple `&T` or a single `&mut T`. Everything we saw above is on the `&T` path and we need a `&mut T` path.
 
