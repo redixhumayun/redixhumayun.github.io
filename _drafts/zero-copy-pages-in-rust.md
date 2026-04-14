@@ -168,9 +168,67 @@ pub struct PageReadGuard<'a> {
 }
 ```
 
-Typical database engines have two core page types - heap and btree pages. So let's introduce the former with two data structures in our engine - `HeapPage` and `HeapPageView` . The structure of the page is going to be a standard [slotted page](https://siemens.blog/posts/database-page-layout/) layout.
+Typical database engines have two core page types - heap and btree pages. So let's focus on the former. The structure of the page is going to be a standard [slotted page](https://siemens.blog/posts/database-page-layout/) layout.
 
-A slotted page is divided into the header, the line pointers and the record space, so we'll create a struct for each and store all these references in our `HeapPage`.
+At this point, the bytes are already borrowed through `PageReadGuard<'a>`. The real design question is where the guard should live and where the parsed references into the page should live.
+
+The most natural thing to try is to keep everything in one struct.
+
+```rust
+struct HeapPage<'a> {
+    guard: PageReadGuard<'a>,
+    header: &'a [u8],
+    line_pointers: &'a [u8],
+    record_space: &'a [u8],
+}
+```
+
+This leads us to the classic [self-referential struct](https://quinedot.github.io/rust-learning/pf-meta.html) issue in Rust, which makes pointer invalidation very hard. Imagine for a moment, you have a struct and it has two fields - A and B, with B pointing to A. Now, your struct A moves. What does B point to? It's going to continue pointing to where A was but that's invalid and would lead to UB. There are ways around this in Rust with [`Pin`](https://without.boats/blog/pin/), unsafe raw pointers, `Arc` pointers and external crates like `ouroboros`. But, all of these have overhead associated with them.
+
+So, the next thing to try is to separate ownership of the guard from the parsed view into the page.
+
+```rust
+pub struct HeapPage<'a> {
+    guard: PageReadGuard<'a>,
+}
+
+pub struct HeapPageView<'a> {
+    header: &'a [u8],
+    line_pointers: &'a [u8],
+    record_space: &'a [u8],
+    layout: &'a Layout,
+}
+
+let page = HeapPage::new(guard);
+let view = HeapPageView::new(&'a page, layout); // borrows from page and page stays alive on stack
+```
+
+This works but runs into an issue when we want to mutate the bytes. Imagine that we want to insert a record into the heap page. This requires mutating `record_space` and also mutating `line_pointers`. Now, the bounds of both might have changed which means we have stale references in our struct. We need to drop the struct and re-create it again. While it is cheap, it's a [leaky abstraction](https://www.joelonsoftware.com/2002/11/11/the-law-of-leaky-abstractions/).
+
+A better form would be to do the following
+
+```rust
+pub struct HeapPage<'a> {
+    guard: PageReadGuard<'a>,
+}
+
+pub struct HeapPageView<'a> {
+    header: &'a [u8],
+    body_bytes: &'a [u8],
+    layout: &'a Layout,
+}
+
+let page = HeapPage::new(guard);
+let view = HeapPageView::new(&'a page, layout); // borrows from page and page stays alive on stack
+```
+
+In slotted pages, the header size is fixed and anytime we want to perform some operation we re-parse the body bytes using information from the header and get an accurate view into the bytes.
+
+But, the above requires keeping the page and view alive on the stack and leaks implementation details up to the query layer. Once again, a [leaky abstraction](https://www.joelonsoftware.com/2002/11/11/the-law-of-leaky-abstractions/).
+
+The version I went with flips this around. `HeapPageView` stores the guard and `HeapPage` is rebuilt on demand from borrowed bytes whenever we need to interpret the page layout.
+
+To make that concrete, a slotted page is divided into the header, the line pointers and the record space, so we'll create a struct for each and store all these references in our `HeapPage`.
 
 ```rust
 pub struct HeapHeaderRef<'a> {
@@ -243,24 +301,7 @@ HeapHeaderRef<'a>  LinePtrArray<'a>  HeapRecordSpace<'a>
 ```
 {: .ascii-art}
 
-I want to talk a little bit about the design here because I think it really helps to build a mental model of Rust references and lifetimes.
-
-The structure here is odd because naturally you'd imagine that `HeapPage` would store the guard to keep the page pinned and `HeapPageView` would store the pointers into the bytes themselves since this gives you a natural stacking of abstractions. Or, even better, get rid of `HeapPageView` and store the guard and the pointers within `HeapPage`.
-
-```rust
-struct HeapPage<'a> {
-    guard: PageReadGuard <'a>,
-    header: HeapHeaderRef<'a>, // borrows from guard
-    line_pointers: LinePtrArray<'a>, // borrows from guard
-    record_space: HeapRecordSpace<'a>, // borrows from guard
-}
-```
-
-This leads us to the classic [self-referential struct](https://quinedot.github.io/rust-learning/pf-meta.html) issue in Rust, which makes pointer invalidation very hard. Imagine for a moment, you have a struct and it has two fields - A and B, with B pointing to A. Now, your struct A moves. What does B point to? It's going to continue pointing to where A was but that's invalid and would lead to UB. There are ways around this in Rust with [`Pin`](https://without.boats/blog/pin/), unsafe raw pointers, `Arc` pointers and external crates like `ouroboros`. But, all of these have overhead associated with them.
-
-A simpler resolution is to restructure the code to avoid self-references entirely. We have `HeapPage` which has pointers into `PageBytes` and we have `HeapPageView` which stores the actual bytes.
-
- But, where's the link between them?
+The link between them is a method on `HeapPageView` that constructs a `HeapPage` whenever some operation needs an interpreted view of the page bytes.
 
 ```rust
 impl<'a> HeapPageView<'a> {
@@ -311,47 +352,6 @@ Now, you're probably wondering about the cost of reconstructing the `HeapPage` e
 | ![](/assets/img/zero-copy/cpu_ops_cost.png) |
 |:--:|
 | *Not all CPU operations are created equal. Source: [ithare.com](https://ithare.com/infographics-operation-costs-in-cpu-clock-cycles/), via Andrew Kelley's [talk on Data Oriented Design](https://youtu.be/IroPQ150F6c?t=409)* |
-
-Another way to structure the above references would have been to store the guard on the `HeapPage` and have the `HeapPageView` construct the slices into the page bytes.
-
-```rust
-pub struct HeapPage<'a> {
-    guard: PageReadGuard<'a>,
-}
-
-pub struct HeapPageView<'a> {
-    header: HeapHeaderRef<'a>,
-    line_pointers: LinePtrArray<'a>,
-    record_space: HeapRecordSpace<'a>,
-    layout: &'a Layout,
-}
-
-let page = HeapPage::new(guard);
-let view = HeapPageView::new(&'a page, layout); // borrows from page and page stays alive on stack
-```
-
-This works but runs into an issue when we want to mutate the bytes. Imagine that we want to insert a record into the heap page. This requires mutating `record_space` and also mutating `line_pointers`. Now, the bounds of both might have changed which means we have stale references in our struct. We need to drop the struct and re-create it again. While it is cheap, it's a [leaky abstraction](https://www.joelonsoftware.com/2002/11/11/the-law-of-leaky-abstractions/).
-
-A better form would be to do the following
-
-```rust
-pub struct HeapPage<'a> {
-    guard: PageReadGuard<'a>,
-}
-
-pub struct HeapPageView<'a> {
-    header: HeapHeaderRef<'a>,
-    body_bytes: &'a [u8],
-    layout: &'a Layout,
-}
-
-let page = HeapPage::new(guard);
-let view = HeapPageView::new(&'a page, layout); // borrows from page and page stays alive on stack
-```
-
-In slotted pages, the header size is fixed and anytime we want to perform some operation we re-parse the body bytes using information from the header and get an accurate view into the bytes.
-
-But, the above requires keeping the page and view alive on the stack and leaks implementation details up to the query layer. The version I went with makes those details opaque to the query layer.
 
 ## Structuring Types In Rust
 
