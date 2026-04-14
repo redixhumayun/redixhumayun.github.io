@@ -170,7 +170,7 @@ pub struct PageReadGuard<'a> {
 
 Typical database engines have two core page types - heap and btree pages. So let's focus on the former. The structure of the page is going to be a standard [slotted page](https://siemens.blog/posts/database-page-layout/) layout.
 
-At this point, the bytes are already borrowed through `PageReadGuard<'a>`. The real design question is where the guard should live and where the parsed references into the page should live.
+At this point, the bytes are already borrowed through `PageReadGuard<'a>`. Now, the question is where the guard should live and where the parsed references into the page should live.
 
 The most natural thing to try is to keep everything in one struct.
 
