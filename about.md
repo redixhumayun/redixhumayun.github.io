@@ -4,7 +4,7 @@ permalink: /about/
 ---
 # About Me
 
-Hi, my name is Zaid Humayun. I'm a self-taught developer curious about how computers work. This website is my attempt at documenting my learnings.
+Hi, my name is Zaid Humayun. I'm curious about how computers work. This website is my attempt at documenting my learnings.
 
 I'm primarily interested in databases and systems programming. I'm currently doing my Master's in Computer Science at USC, where I'm working on a project with Professor [Shahram Ghandeharizadeh](https://viterbi.usc.edu/directory/faculty/Ghandeharizadeh/Shahram) at the [FLS Lab](https://www.flslab.org/), building an AI data plane.
 
