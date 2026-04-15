@@ -4,9 +4,14 @@ permalink: /about/
 ---
 # About Me
 
-Hi, my name is Zaid Humayun. I'm a self-taught developer, and am curious about how computers work.
-This website is my attempt at documenting my learnings in the field.
+Hi, my name is Zaid Humayun. I'm a self-taught developer curious about how computers work. This website is my attempt at documenting my learnings.
 
-I'm primarily interested in learning about databases. I'm currently working at [Conviva](https://conviva.com/) on the streaming engine.
+I'm primarily interested in databases and systems programming. I'm currently doing my Master's in Computer Science at USC, where I'm working on a project with Professor [Shahram Ghandeharizadeh](https://viterbi.usc.edu/directory/faculty/Ghandeharizadeh/Shahram) at the [FLS Lab](https://www.flslab.org/), building an AI data plane.
 
-I'm always happy to chat about programming and any related topics around it, so feel free to reach out :) I'm reachable by email (redixhumayun@gmail.com) and good with Twitter DM's!
+## Projects
+
+One of my ongoing projects is [simpledb](http://github.com/redixhumayun/simpledb/) — an in-process SQL engine I'm building with a focus on high performance, with the goal of passing the YCSB benchmark.
+
+## Get in touch
+
+I genuinely enjoy talking to people about databases, systems, and programming in general — don't hesitate to reach out. I'm reachable by email (redixhumayun@gmail.com), [Twitter](https://x.com/redixhumayun), or [LinkedIn](https://www.linkedin.com/in/zaid-humayun/).
