@@ -512,9 +512,7 @@ Constraint: 'page : 'row
 
 The split into separate read and write types has a real ergonomic cost. `HeapPageViewMut` doesn't automatically get `HeapPageView`'s read methods. In Rust's standard library, `&mut Vec<T>` coerces to `&Vec<T>` automatically via `Deref`, so mutable references get all immutable methods for free.
 
-This only works because `Vec<T>` wraps around a single raw pointer. It then implements `Deref<Target=[T]>` and `DerefMut<Target=[T]>` to give you either a `&T` or `&mut T`.
-
-This works because `Vec<T>` is backed by a single raw pointer internally. From one pointer, the borrow checker decides at the call site whether you get `&[T]` or `&mut [T]` based on how you borrowed it. The unsafe is inside `Vec`, audited once and invisible to callers.
+This works because `Vec<T>` is backed by a single raw pointer internally. It implements `Deref<Target=[T]>` and `DerefMut<Target=[T]>` to give you either a `&[T]` or `&mut [T]`. From one pointer, the borrow checker decides at the call site whether you get a shared or exclusive slice based on how you borrowed it. The unsafe is inside `Vec`, audited once and invisible to callers.
 
 ```rust
 pub struct Vec<T, #[unstable(feature = "allocator_api", issue = "32838")] A: Allocator = Global> {
